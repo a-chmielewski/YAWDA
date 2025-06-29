@@ -35,6 +35,12 @@
         <Content Include="Assets\Wide310x150Logo.scale-200.png" />
     </ItemGroup>
 
+    <!-- Exclude test files from main project compilation -->
+    <ItemGroup>
+        <Compile Remove="YAWDA.Tests\**\*.cs" />
+        <Content Remove="YAWDA.Tests\**\*" />
+    </ItemGroup>
+
     <ItemGroup>
         <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.*" />
         <PackageReference Include="Microsoft.Web.WebView2" Version="1.*" />

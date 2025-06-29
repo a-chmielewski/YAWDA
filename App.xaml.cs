@@ -4,6 +4,7 @@ using Microsoft.UI.Xaml.Navigation;
 using YAWDA.Services;
 using YAWDA.Views;
 using YAWDA.ViewModels;
+using YAWDA.Utilities;
 
 namespace YAWDA
 {
@@ -51,14 +52,18 @@ namespace YAWDA
         {
             var services = new ServiceCollection();
 
-            // Configure logging
-            services.AddLogging(builder =>
-            {
-                builder.AddConsole();
-                builder.SetMinimumLevel(LogLevel.Information);
-            });
+            // Configure enhanced logging with file output
+            #if DEBUG
+            services.ConfigureEnhancedLogging(isDebugMode: true);
+            #else
+            services.ConfigureEnhancedLogging(isDebugMode: false);
+            #endif
 
-            // Register service interfaces - implementations will be added in later steps
+            // Register error handling services
+            services.AddSingleton<IErrorReportingService, ErrorReportingService>();
+            services.AddSingleton<IGlobalExceptionHandler, GlobalExceptionHandler>();
+
+            // Register core services
             services.AddSingleton<IDataService, DataService>();
             services.AddSingleton<ISmartFeaturesService, SmartFeaturesService>();
             services.AddSingleton<IReminderService, ReminderService>();
@@ -74,6 +79,12 @@ namespace YAWDA
 
             serviceProvider = services.BuildServiceProvider();
             Services = serviceProvider;
+
+            // Initialize global exception handler
+            InitializeGlobalExceptionHandler();
+
+            // Cleanup old logs on startup
+            Task.Run(() => LoggingConfiguration.CleanupOldLogs());
         }
 
         /// <summary>
@@ -133,23 +144,97 @@ namespace YAWDA
         /// </summary>
         private async Task InitializeBackgroundServicesAsync()
         {
+            IErrorReportingService? errorReportingService = null;
+            
             try
             {
-                // Initialize core services
-                var reminderService = ServiceProvider.GetRequiredService<IReminderService>();
-                var systemTrayService = ServiceProvider.GetRequiredService<ISystemTrayService>();
+                errorReportingService = ServiceProvider.GetRequiredService<IErrorReportingService>();
+                
+                // Initialize core services with graceful degradation
+                await InitializeServiceWithGracefulDegradation(
+                    async () =>
+                    {
+                        var reminderService = ServiceProvider.GetRequiredService<IReminderService>();
+                        await reminderService.StartAsync();
+                    },
+                    "ReminderService",
+                    errorReportingService
+                );
 
-                // Start reminder service
-                await reminderService.StartAsync();
-
-                // Initialize system tray
-                await systemTrayService.InitializeAsync();
+                await InitializeServiceWithGracefulDegradation(
+                    async () =>
+                    {
+                        var systemTrayService = ServiceProvider.GetRequiredService<ISystemTrayService>();
+                        await systemTrayService.InitializeAsync();
+                    },
+                    "SystemTrayService",
+                    errorReportingService
+                );
             }
             catch (Exception ex)
             {
-                // Log error but continue - app should still function
+                // Report critical initialization error
+                if (errorReportingService != null)
+                {
+                    await errorReportingService.ReportCriticalErrorAsync(
+                        new InitializationException("Failed to initialize background services", ex, "INIT_001"),
+                        false
+                    );
+                }
+                else
+                {
+                    // Fallback logging if error reporting service is not available
+                    var logger = ServiceProvider.GetRequiredService<ILogger<App>>();
+                    logger.LogCritical(ex, "Critical: Failed to initialize background services and error reporting is unavailable");
+                }
+            }
+        }
+
+        /// <summary>
+        /// Initializes a service with graceful degradation on failure
+        /// </summary>
+        private async Task InitializeServiceWithGracefulDegradation(
+            Func<Task> serviceInitializer, 
+            string serviceName, 
+            IErrorReportingService errorReportingService)
+        {
+            try
+            {
+                await serviceInitializer();
+            }
+            catch (Exception ex)
+            {
+                // Report as recoverable error - app can continue without this service
+                var serviceException = new SystemIntegrationException(
+                    $"Failed to initialize {serviceName}",
+                    ex,
+                    $"SERVICE_INIT_{serviceName.ToUpper()}"
+                );
+
+                await errorReportingService.ReportRecoverableErrorAsync(serviceException, new List<string>
+                {
+                    $"Restart the application to retry {serviceName} initialization",
+                    "Some features may be limited without this service",
+                    "Check system resources and permissions"
+                });
+            }
+        }
+
+        /// <summary>
+        /// Initializes the global exception handler
+        /// </summary>
+        private void InitializeGlobalExceptionHandler()
+        {
+            try
+            {
+                var globalExceptionHandler = ServiceProvider.GetRequiredService<IGlobalExceptionHandler>();
+                globalExceptionHandler.Initialize();
+            }
+            catch (Exception ex)
+            {
+                // Fallback logging if global exception handler setup fails
                 var logger = ServiceProvider.GetRequiredService<ILogger<App>>();
-                logger.LogError(ex, "Error initializing background services");
+                logger.LogError(ex, "Failed to initialize global exception handler");
             }
         }
 
@@ -160,7 +245,19 @@ namespace YAWDA
         /// <param name="e">Details about the navigation failure</param>
         void OnNavigationFailed(object sender, NavigationFailedEventArgs e)
         {
-            throw new Exception("Failed to load Page " + e.SourcePageType.FullName);
+            var navigationException = new UserInterfaceException($"Failed to load Page {e.SourcePageType.FullName}", "NAV_001");
+            
+            // Report through error reporting service
+            try
+            {
+                var errorReportingService = ServiceProvider.GetRequiredService<IErrorReportingService>();
+                _ = Task.Run(async () => await errorReportingService.ReportErrorAsync(navigationException, "Navigation"));
+            }
+            catch
+            {
+                // Fallback to direct exception if error reporting fails
+                throw navigationException;
+            }
         }
     }
 }
