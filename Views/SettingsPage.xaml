@@ -1,0 +1,437 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<Page
+    x:Class="YAWDA.Views.SettingsPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:local="using:YAWDA.Views"
+    xmlns:viewmodels="using:YAWDA.ViewModels"
+    xmlns:models="using:YAWDA.Models"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <ScrollViewer Padding="20" MaxWidth="800">
+        <StackPanel Spacing="24">
+            <!-- Header -->
+            <StackPanel Spacing="8">
+                <TextBlock
+                    Text="⚙️ Settings"
+                    Style="{StaticResource HeaderTextStyle}"
+                    HorizontalAlignment="Left" />
+                <TextBlock
+                    Text="Configure your water reminder preferences and behavior"
+                    Style="{StaticResource BodyTextStyle}"
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+            </StackPanel>
+
+            <!-- Status Message -->
+            <InfoBar
+                x:Name="StatusInfoBar"
+                IsOpen="{x:Bind ViewModel.IsStatusMessageVisible, Mode=OneWay}"
+                Message="{x:Bind ViewModel.StatusMessage, Mode=OneWay}"
+                Severity="Success"
+                Margin="0,0,0,8" />
+
+            <!-- Personal Settings -->
+            <Border Style="{StaticResource CardBorderStyle}">
+                <StackPanel Spacing="16">
+                    <TextBlock
+                        Text="Personal Settings"
+                        Style="{StaticResource SubHeaderTextStyle}" />
+                    
+                    <!-- Body Weight -->
+                    <StackPanel Spacing="8">
+                        <TextBlock
+                            Text="Body Weight"
+                            Style="{StaticResource BodyTextStyle}"
+                            FontWeight="SemiBold" />
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            
+                            <NumberBox
+                                Grid.Column="0"
+                                Value="{x:Bind ViewModel.Settings.BodyWeightKilograms, Mode=TwoWay}"
+                                Minimum="30"
+                                Maximum="300"
+                                SpinButtonPlacementMode="Compact"
+                                HorizontalAlignment="Stretch"
+                                Margin="0,0,8,0" />
+                            
+                            <TextBlock
+                                Grid.Column="1"
+                                Text="kg"
+                                Style="{StaticResource BodyTextStyle}"
+                                VerticalAlignment="Center" />
+                        </Grid>
+                        <TextBlock
+                            Text="{x:Bind ViewModel.CalculatedDailyGoalText, Mode=OneWay}"
+                            Style="{StaticResource CaptionTextStyle}" />
+                    </StackPanel>
+
+                    <!-- Custom Daily Goal -->
+                    <StackPanel Spacing="8">
+                        <TextBlock
+                            Text="Custom Daily Goal (optional)"
+                            Style="{StaticResource BodyTextStyle}"
+                            FontWeight="SemiBold" />
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            
+                            <NumberBox
+                                Grid.Column="0"
+                                Text="{x:Bind ViewModel.CustomDailyGoalText, Mode=TwoWay}"
+                                Minimum="500"
+                                Maximum="5000"
+                                SpinButtonPlacementMode="Compact"
+                                PlaceholderText="Leave empty to use calculated goal"
+                                HorizontalAlignment="Stretch"
+                                Margin="0,0,8,0" />
+                            
+                            <TextBlock
+                                Grid.Column="1"
+                                Text="ml"
+                                Style="{StaticResource BodyTextStyle}"
+                                VerticalAlignment="Center" />
+                        </Grid>
+                        <TextBlock
+                            Text="Override the calculated goal with your own target"
+                            Style="{StaticResource CaptionTextStyle}" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- Reminder Settings -->
+            <Border Style="{StaticResource CardBorderStyle}">
+                <StackPanel Spacing="16">
+                    <TextBlock
+                        Text="Reminder Settings"
+                        Style="{StaticResource SubHeaderTextStyle}" />
+
+                    <!-- Base Reminder Interval -->
+                    <StackPanel Spacing="8">
+                        <TextBlock
+                            Text="Base Reminder Interval"
+                            Style="{StaticResource BodyTextStyle}"
+                            FontWeight="SemiBold" />
+                        <ComboBox
+                            ItemsSource="{x:Bind ViewModel.ReminderIntervals}"
+                            SelectedItem="{x:Bind ViewModel.Settings.BaseReminderIntervalMinutes, Mode=TwoWay}"
+                            HorizontalAlignment="Stretch">
+                            <ComboBox.ItemTemplate>
+                                <DataTemplate x:DataType="x:Int32">
+                                    <TextBlock Text="{x:Bind Converter={StaticResource IntToStringConverter}, ConverterParameter=' minutes'}" />
+                                </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                        </ComboBox>
+                        <TextBlock
+                            Text="How often to show reminders during work hours"
+                            Style="{StaticResource CaptionTextStyle}" />
+                    </StackPanel>
+
+                    <!-- Work Hours -->
+                    <StackPanel Spacing="8">
+                        <TextBlock
+                            Text="Work Hours"
+                            Style="{StaticResource BodyTextStyle}"
+                            FontWeight="SemiBold" />
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            
+                            <TimePicker
+                                Grid.Column="0"
+                                Header="Start Time"
+                                SelectedTime="{x:Bind ViewModel.Settings.WorkHoursStart, Mode=TwoWay}"
+                                HorizontalAlignment="Stretch" />
+                            
+                            <TextBlock
+                                Grid.Column="1"
+                                Text="to"
+                                Style="{StaticResource BodyTextStyle}"
+                                VerticalAlignment="Center"
+                                Margin="16,20,16,0" />
+                            
+                            <TimePicker
+                                Grid.Column="2"
+                                Header="End Time"
+                                SelectedTime="{x:Bind ViewModel.Settings.WorkHoursEnd, Mode=TwoWay}"
+                                HorizontalAlignment="Stretch" />
+                        </Grid>
+                        <TextBlock
+                            Text="Reminders will be more frequent during these hours"
+                            Style="{StaticResource CaptionTextStyle}" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- Disruption Settings -->
+            <Border Style="{StaticResource CardBorderStyle}">
+                <StackPanel Spacing="16">
+                    <TextBlock
+                        Text="Progressive Disruption Settings"
+                        Style="{StaticResource SubHeaderTextStyle}" />
+
+                    <!-- Maximum Disruption Level -->
+                    <StackPanel Spacing="8">
+                        <TextBlock
+                            Text="Maximum Disruption Level"
+                            Style="{StaticResource BodyTextStyle}"
+                            FontWeight="SemiBold" />
+                        <ComboBox
+                            ItemsSource="{x:Bind ViewModel.DisruptionLevels}"
+                            SelectedItem="{x:Bind ViewModel.Settings.MaxDisruptionLevel, Mode=TwoWay}"
+                            HorizontalAlignment="Stretch">
+                            <ComboBox.ItemTemplate>
+                                <DataTemplate x:DataType="x:Int32">
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <TextBlock Text="{x:Bind}" FontWeight="SemiBold" />
+                                        <TextBlock Text="-" />
+                                        <TextBlock Text="{x:Bind Converter={StaticResource DisruptionLevelDescriptionConverter}}" />
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                        </ComboBox>
+                        <TextBlock
+                            Text="How disruptive reminders can become when ignored"
+                            Style="{StaticResource CaptionTextStyle}" />
+                    </StackPanel>
+
+                    <!-- Disruption Level Descriptions -->
+                    <Border
+                        Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
+                        CornerRadius="8"
+                        Padding="16">
+                        <StackPanel Spacing="12">
+                            <TextBlock
+                                Text="Disruption Levels Explained"
+                                Style="{StaticResource BodyTextStyle}"
+                                FontWeight="SemiBold" />
+                            
+                            <StackPanel Spacing="8">
+                                <TextBlock Style="{StaticResource CaptionTextStyle}">
+                                    <Run Text="Level 1:" FontWeight="SemiBold" />
+                                    <Run Text="Standard toast notifications" />
+                                </TextBlock>
+                                <TextBlock Style="{StaticResource CaptionTextStyle}">
+                                    <Run Text="Level 2:" FontWeight="SemiBold" />
+                                    <Run Text="Top-screen banner overlay" />
+                                </TextBlock>
+                                <TextBlock Style="{StaticResource CaptionTextStyle}">
+                                    <Run Text="Level 3:" FontWeight="SemiBold" />
+                                    <Run Text="Full-screen hydration break overlay" />
+                                </TextBlock>
+                                <TextBlock Style="{StaticResource CaptionTextStyle}">
+                                    <Run Text="Level 4:" FontWeight="SemiBold" />
+                                    <Run Text="High-priority system notifications" />
+                                </TextBlock>
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </Border>
+
+            <!-- Smart Features -->
+            <Border Style="{StaticResource CardBorderStyle}">
+                <StackPanel Spacing="16">
+                    <TextBlock
+                        Text="Smart Features"
+                        Style="{StaticResource SubHeaderTextStyle}" />
+
+                    <!-- Smart Pause -->
+                    <StackPanel Spacing="8">
+                        <ToggleSwitch
+                            Header="Smart Pause"
+                            IsOn="{x:Bind ViewModel.Settings.EnableSmartPause, Mode=TwoWay}"
+                            OnContent="Enabled"
+                            OffContent="Disabled" />
+                        <TextBlock
+                            Text="Automatically pause reminders when system is idle"
+                            Style="{StaticResource CaptionTextStyle}" />
+                    </StackPanel>
+
+                    <!-- Circadian Adjustment -->
+                    <StackPanel Spacing="8">
+                        <ToggleSwitch
+                            Header="Circadian Rhythm Adjustment"
+                            IsOn="{x:Bind ViewModel.Settings.EnableCircadianAdjustment, Mode=TwoWay}"
+                            OnContent="Enabled"
+                            OffContent="Disabled" />
+                        <TextBlock
+                            Text="Reduce reminders after 6 PM for better sleep"
+                            Style="{StaticResource CaptionTextStyle}" />
+                    </StackPanel>
+
+                    <!-- Weather Adjustment -->
+                    <StackPanel Spacing="8">
+                        <ToggleSwitch
+                            Header="Weather-Based Adjustments"
+                            IsOn="{x:Bind ViewModel.Settings.EnableWeatherAdjustment, Mode=TwoWay}"
+                            OnContent="Enabled"
+                            OffContent="Disabled" />
+                        <TextBlock
+                            Text="Adjust reminders based on temperature and humidity"
+                            Style="{StaticResource CaptionTextStyle}" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- Notification Settings -->
+            <Border Style="{StaticResource CardBorderStyle}">
+                <StackPanel Spacing="16">
+                    <TextBlock
+                        Text="Notification Settings"
+                        Style="{StaticResource SubHeaderTextStyle}" />
+
+                    <!-- Notification Sounds -->
+                    <StackPanel Spacing="8">
+                        <ToggleSwitch
+                            Header="Notification Sounds"
+                            IsOn="{x:Bind ViewModel.Settings.EnableNotificationSounds, Mode=TwoWay}"
+                            OnContent="Enabled"
+                            OffContent="Disabled" />
+                        <TextBlock
+                            Text="Play sounds with notifications and overlays"
+                            Style="{StaticResource CaptionTextStyle}" />
+                    </StackPanel>
+
+                    <!-- Volume Control -->
+                    <StackPanel Spacing="8" Visibility="{x:Bind ViewModel.Settings.EnableNotificationSounds, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <TextBlock
+                            Text="Notification Volume"
+                            Style="{StaticResource BodyTextStyle}"
+                            FontWeight="SemiBold" />
+                        <Slider
+                            Value="{x:Bind ViewModel.Settings.NotificationVolume, Mode=TwoWay}"
+                            Minimum="0"
+                            Maximum="1"
+                            StepFrequency="0.1"
+                            TickFrequency="0.2"
+                            TickPlacement="BottomRight"
+                            HorizontalAlignment="Stretch" />
+                        <Grid>
+                            <TextBlock
+                                Text="Quiet"
+                                Style="{StaticResource CaptionTextStyle}"
+                                HorizontalAlignment="Left" />
+                            <TextBlock
+                                Text="Loud"
+                                Style="{StaticResource CaptionTextStyle}"
+                                HorizontalAlignment="Right" />
+                        </Grid>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- Appearance Settings -->
+            <Border Style="{StaticResource CardBorderStyle}">
+                <StackPanel Spacing="16">
+                    <TextBlock
+                        Text="Appearance"
+                        Style="{StaticResource SubHeaderTextStyle}" />
+
+                    <!-- Theme Selection -->
+                    <StackPanel Spacing="8">
+                        <TextBlock
+                            Text="App Theme"
+                            Style="{StaticResource BodyTextStyle}"
+                            FontWeight="SemiBold" />
+                        <ComboBox
+                            ItemsSource="{x:Bind ViewModel.AvailableThemes}"
+                            SelectedItem="{x:Bind ViewModel.SelectedTheme, Mode=TwoWay}"
+                            HorizontalAlignment="Stretch">
+                            <ComboBox.ItemTemplate>
+                                <DataTemplate x:DataType="x:String">
+                                    <TextBlock Text="{x:Bind}" />
+                                </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                        </ComboBox>
+                        <TextBlock
+                            Text="Choose light, dark, or follow system theme"
+                            Style="{StaticResource CaptionTextStyle}" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- Startup Settings -->
+            <Border Style="{StaticResource CardBorderStyle}">
+                <StackPanel Spacing="16">
+                    <TextBlock
+                        Text="Startup Settings"
+                        Style="{StaticResource SubHeaderTextStyle}" />
+
+                    <!-- Start with Windows -->
+                    <StackPanel Spacing="8">
+                        <ToggleSwitch
+                            Header="Start with Windows"
+                            IsOn="{x:Bind ViewModel.Settings.StartWithWindows, Mode=TwoWay}"
+                            OnContent="Enabled"
+                            OffContent="Disabled" />
+                        <TextBlock
+                            Text="Automatically start YAWDA when Windows starts"
+                            Style="{StaticResource CaptionTextStyle}" />
+                    </StackPanel>
+
+                    <!-- Start Minimized -->
+                    <StackPanel Spacing="8">
+                        <ToggleSwitch
+                            Header="Start Minimized"
+                            IsOn="{x:Bind ViewModel.Settings.StartMinimized, Mode=TwoWay}"
+                            OnContent="Enabled"
+                            OffContent="Disabled" />
+                        <TextBlock
+                            Text="Start in system tray without showing main window"
+                            Style="{StaticResource CaptionTextStyle}" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- Action Buttons -->
+            <StackPanel Orientation="Horizontal" Spacing="16" HorizontalAlignment="Center" Margin="0,16,0,0">
+                <Button
+                    Content="💾 Save Settings"
+                    Style="{StaticResource WaterIntakeButtonStyle}"
+                    Command="{x:Bind ViewModel.SaveSettingsCommand}"
+                    IsEnabled="{x:Bind ViewModel.HasUnsavedChanges, Mode=OneWay}"
+                    MinWidth="150" />
+                
+                <Button
+                    Content="🔄 Reset to Defaults"
+                    Style="{StaticResource SecondaryButtonStyle}"
+                    Command="{x:Bind ViewModel.ResetToDefaultsCommand}"
+                    MinWidth="150" />
+                
+                <Button
+                    Content="← Back to Main"
+                    Style="{StaticResource SecondaryButtonStyle}"
+                    Click="OnBackToMainClicked"
+                                          MinWidth="150" />
+              </StackPanel>
+
+            <!-- Loading Overlay -->
+            <Border
+                Visibility="{x:Bind ViewModel.IsLoading, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}"
+                Background="{ThemeResource AcrylicBackgroundFillColorDefaultBrush}"
+                CornerRadius="8"
+                Padding="20">
+                <StackPanel
+                    HorizontalAlignment="Center"
+                    Spacing="12">
+                    <ProgressRing IsActive="True" Width="32" Height="32" />
+                    <TextBlock
+                        Text="Loading settings..."
+                        Style="{StaticResource BodyTextStyle}"
+                        HorizontalAlignment="Center" />
+                </StackPanel>
+            </Border>
+          </StackPanel>
+      </ScrollViewer>
+</Page> 

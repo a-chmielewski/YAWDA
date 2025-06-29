@@ -21,6 +21,9 @@
             <converters:TimeSpanToStringConverter x:Key="TimeSpanToStringConverter" />
             <converters:CountToVisibilityConverter x:Key="CountToVisibilityConverter" />
             <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />
+            <converters:DataRetentionConverter x:Key="DataRetentionConverter" />
+            <converters:DisruptionLevelDescriptionConverter x:Key="DisruptionLevelDescriptionConverter" />
+            <converters:EnumToStringConverter x:Key="EnumToStringConverter" />
 
             <!-- Other app resources here -->
             <Color x:Key="Primary">#512BD4</Color>

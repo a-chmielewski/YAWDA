@@ -127,4 +127,84 @@ namespace YAWDA.Converters
             return false;
         }
     }
+
+    /// <summary>
+    /// Converts data retention days to human-readable text
+    /// </summary>
+    public class DataRetentionConverter : IValueConverter
+    {
+        public object Convert(object value, Type targetType, object parameter, string language)
+        {
+            if (value is int days)
+            {
+                return days switch
+                {
+                    30 => "1 Month",
+                    90 => "3 Months",
+                    180 => "6 Months",
+                    365 => "1 Year",
+                    730 => "2 Years",
+                    1095 => "3 Years",
+                    _ => $"{days} Days"
+                };
+            }
+            return value;
+        }
+
+        public object ConvertBack(object value, Type targetType, object parameter, string language)
+        {
+            throw new NotImplementedException();
+        }
+    }
+
+    /// <summary>
+    /// Converts disruption level number to description
+    /// </summary>
+    public class DisruptionLevelDescriptionConverter : IValueConverter
+    {
+        public object Convert(object value, Type targetType, object parameter, string language)
+        {
+            if (value is int level)
+            {
+                return level switch
+                {
+                    1 => "Toast notifications only",
+                    2 => "Enhanced toasts + banners",
+                    3 => "Overlays + enhanced disruption",
+                    4 => "Maximum disruption (high priority)",
+                    _ => "Unknown level"
+                };
+            }
+            return value;
+        }
+
+        public object ConvertBack(object value, Type targetType, object parameter, string language)
+        {
+            throw new NotImplementedException();
+        }
+    }
+
+    /// <summary>
+    /// Converts enum values to display strings
+    /// </summary>
+    public class EnumToStringConverter : IValueConverter
+    {
+        public object Convert(object value, Type targetType, object parameter, string language)
+        {
+            if (value is Enum enumValue)
+            {
+                return enumValue.ToString();
+            }
+            return value?.ToString() ?? string.Empty;
+        }
+
+        public object ConvertBack(object value, Type targetType, object parameter, string language)
+        {
+            if (value is string stringValue && targetType.IsEnum)
+            {
+                return Enum.Parse(targetType, stringValue);
+            }
+            return value;
+        }
+    }
 } 

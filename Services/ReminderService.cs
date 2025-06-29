@@ -14,6 +14,7 @@ namespace YAWDA.Services
     {
         private readonly ILogger<ReminderService> _logger;
         private readonly IDataService _dataService;
+        private readonly ISmartFeaturesService _smartFeaturesService;
         private Timer? _reminderTimer;
         private ReminderState _currentState;
         private UserSettings _currentSettings;
@@ -29,10 +30,11 @@ namespace YAWDA.Services
         public bool IsRunning { get; private set; } = false;
         public bool IsPaused => _currentState?.IsPaused ?? false;
 
-        public ReminderService(ILogger<ReminderService> logger, IDataService dataService)
+        public ReminderService(ILogger<ReminderService> logger, IDataService dataService, ISmartFeaturesService smartFeaturesService)
         {
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _dataService = dataService ?? throw new ArgumentNullException(nameof(dataService));
+            _smartFeaturesService = smartFeaturesService ?? throw new ArgumentNullException(nameof(smartFeaturesService));
             
             // Initialize with defaults
             _currentState = ReminderState.CreateDefault();
@@ -199,7 +201,7 @@ namespace YAWDA.Services
         /// <summary>
         /// Calculates the next reminder time based on current adherence and settings
         /// </summary>
-        public Task<DateTime> CalculateNextReminderTimeAsync()
+        public async Task<DateTime> CalculateNextReminderTimeAsync()
         {
             var now = DateTime.Now;
             var baseInterval = TimeSpan.FromMinutes(_currentState.CurrentIntervalMinutes);
@@ -208,17 +210,35 @@ namespace YAWDA.Services
             var escalationMultiplier = GetEscalationMultiplier(_currentState.CurrentEscalationLevel);
             var adjustedInterval = TimeSpan.FromMinutes(baseInterval.TotalMinutes * escalationMultiplier);
 
+            // Apply smart feature adjustments
+            if (_currentSettings.EnableWeatherAdjustment)
+            {
+                var weather = await _smartFeaturesService.GetCurrentWeatherAsync();
+                if (weather != null)
+                {
+                    var weatherFactor = _smartFeaturesService.CalculateWeatherHydrationFactor(weather);
+                    adjustedInterval = TimeSpan.FromMinutes(adjustedInterval.TotalMinutes / weatherFactor);
+                    _logger.LogDebug("Weather adjustment applied: factor {WeatherFactor}, adjusted interval {Interval} minutes", 
+                        weatherFactor.ToString("F2"), adjustedInterval.TotalMinutes);
+                }
+            }
+
+            // Apply circadian rhythm adjustments
+            if (_currentSettings.EnableCircadianAdjustment && _smartFeaturesService.IsCircadianNightMode())
+            {
+                adjustedInterval = TimeSpan.FromMinutes(adjustedInterval.TotalMinutes * 2); // Double interval at night
+                _logger.LogDebug("Circadian adjustment applied: extended interval to {Interval} minutes", adjustedInterval.TotalMinutes);
+            }
+
             // Respect work hours if configured
             var nextTime = now.Add(adjustedInterval);
             nextTime = AdjustForWorkHours(nextTime);
 
-            // Ensure minimum interval of 15 minutes
-            if (nextTime <= now.AddMinutes(15))
-            {
-                nextTime = now.AddMinutes(15);
-            }
+            // Ensure minimum interval of 15 minutes, maximum of 180 minutes
+            var finalInterval = Math.Max(15, Math.Min(180, (nextTime - now).TotalMinutes));
+            nextTime = now.AddMinutes(finalInterval);
 
-            return Task.FromResult(nextTime);
+            return nextTime;
         }
 
         /// <summary>
@@ -263,16 +283,14 @@ namespace YAWDA.Services
             {
                 _lastSystemIdleCheck = now;
                 
-                // Check if system is in focus assist mode (Do Not Disturb)
-                var focusAssistEnabled = await IsFocusAssistEnabledAsync();
+                // Use the comprehensive smart features service
+                _lastSystemIdleState = await _smartFeaturesService.ShouldSmartPauseAsync();
                 
-                // Check if user is in a meeting or presentation
-                var inPresentationMode = await IsInPresentationModeAsync();
+                if (_lastSystemIdleState)
+                {
+                    _logger.LogDebug("Smart pause is active - system state detection");
+                }
                 
-                // Check if system has been idle for extended period
-                var systemIdle = await IsSystemIdleAsync();
-                
-                _lastSystemIdleState = focusAssistEnabled || inPresentationMode || systemIdle;
                 return _lastSystemIdleState;
             }
             catch (Exception ex)
@@ -396,18 +414,49 @@ namespace YAWDA.Services
         {
             var timeSinceLastIntake = _currentState.MinutesSinceLastIntake;
             var escalationLevel = _currentState.CurrentEscalationLevel;
+            
+            // Get weather context for enhanced messages
+            var weatherContext = GetWeatherContext();
 
             return escalationLevel switch
             {
-                1 when timeSinceLastIntake < 90 => "Time for a hydration break! 💧",
-                1 => "Remember to drink some water 🚰",
-                2 when timeSinceLastIntake < 120 => "Your body needs water - take a quick sip! 💙",
-                2 => "Hydration reminder: Please drink water soon 🥤",
-                3 when timeSinceLastIntake < 150 => "Important: You haven't had water in a while! ⚠️💧",
-                3 => "Health Alert: Please prioritize hydration now! 🚨💙",
-                4 => "URGENT: Extended dehydration detected - drink water immediately! 🆘🚰",
-                _ => "Time to hydrate! 💧"
+                1 when timeSinceLastIntake < 90 => $"Time for a hydration break! {weatherContext}💧",
+                1 => $"Remember to drink some water {weatherContext}🚰",
+                2 when timeSinceLastIntake < 120 => $"Your body needs water - take a quick sip! {weatherContext}💙",
+                2 => $"Hydration reminder: Please drink water soon {weatherContext}🥤",
+                3 when timeSinceLastIntake < 150 => $"Important: You haven't had water in a while! {weatherContext}⚠️💧",
+                3 => $"Health Alert: Please prioritize hydration now! {weatherContext}🚨💙",
+                4 => $"URGENT: Extended dehydration detected - drink water immediately! {weatherContext}🆘🚰",
+                _ => $"Time to hydrate! {weatherContext}💧"
             };
+        }
+
+        /// <summary>
+        /// Gets weather-appropriate context for reminder messages
+        /// </summary>
+        private string GetWeatherContext()
+        {
+            try
+            {
+                if (!_currentSettings.EnableWeatherAdjustment)
+                    return "";
+
+                // This is a simplified synchronous version for message generation
+                var weather = _smartFeaturesService.GetCurrentWeatherAsync().GetAwaiter().GetResult();
+                if (weather == null) return "";
+
+                return weather.TemperatureCelsius switch
+                {
+                    > 30 => "It's hot outside - stay hydrated! ",
+                    > 25 => "Warm weather calls for extra water! ",
+                    < 5 => "Even in cold weather, hydration matters! ",
+                    _ => ""
+                };
+            }
+            catch
+            {
+                return "";
+            }
         }
 
         /// <summary>
@@ -580,10 +629,8 @@ namespace YAWDA.Services
         /// </summary>
         private async Task<bool> IsFocusAssistEnabledAsync()
         {
-            // Placeholder for Windows Focus Assist detection
-            // Implementation would use Windows APIs to check notification settings
             await Task.CompletedTask;
-            return false;
+            return _smartFeaturesService.IsFocusAssistEnabled();
         }
 
         /// <summary>
@@ -591,10 +638,8 @@ namespace YAWDA.Services
         /// </summary>
         private async Task<bool> IsInPresentationModeAsync()
         {
-            // Placeholder for presentation mode detection
-            // Implementation would check for fullscreen apps, presentation mode registry, etc.
             await Task.CompletedTask;
-            return false;
+            return _smartFeaturesService.IsPresentationModeActive();
         }
 
         /// <summary>
@@ -602,10 +647,8 @@ namespace YAWDA.Services
         /// </summary>
         private async Task<bool> IsSystemIdleAsync()
         {
-            // Placeholder for system idle detection
-            // Implementation would use GetLastInputInfo or similar Windows APIs
             await Task.CompletedTask;
-            return false;
+            return _smartFeaturesService.IsSystemIdle(15); // 15 minutes idle threshold
         }
 
         public void Dispose()

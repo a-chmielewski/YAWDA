@@ -60,10 +60,12 @@ namespace YAWDA
 
             // Register service interfaces - implementations will be added in later steps
             services.AddSingleton<IDataService, DataService>();
+            services.AddSingleton<ISmartFeaturesService, SmartFeaturesService>();
             services.AddSingleton<IReminderService, ReminderService>();
             services.AddSingleton<ISystemTrayService, SystemTrayService>();
             services.AddSingleton<IOverlayService, OverlayService>();
             services.AddSingleton<INotificationService, NotificationService>();
+            services.AddSingleton<IStartupService, StartupService>();
 
             // Register ViewModels
             services.AddTransient<MainPageViewModel>();
@@ -79,8 +81,32 @@ namespace YAWDA
         /// will be used such as when the application is launched to open a specific file.
         /// </summary>
         /// <param name="e">Details about the launch request and process.</param>
-        protected override void OnLaunched(LaunchActivatedEventArgs e)
+        protected override async void OnLaunched(LaunchActivatedEventArgs e)
         {
+            // Initialize startup service and check for startup mode
+            var startupService = ServiceProvider.GetRequiredService<IStartupService>();
+            startupService.InitializeStartupMode(e.Arguments);
+
+            // Get user settings to determine window behavior
+            var dataService = ServiceProvider.GetRequiredService<IDataService>();
+            var settings = await dataService.LoadSettingsAsync();
+
+            // Handle startup mode (background-only operation)
+            if (startupService.IsStartupMode && settings.StartMinimized)
+            {
+                await InitializeBackgroundServicesAsync();
+                
+                // Start system tray without showing main window
+                var systemTrayService = ServiceProvider.GetRequiredService<ISystemTrayService>();
+                await systemTrayService.InitializeAsync();
+                
+                // Validate and fix startup configuration if needed
+                _ = Task.Run(async () => await startupService.ValidateStartupConfigurationAsync());
+                
+                return; // Don't create main window for startup mode
+            }
+
+            // Normal launch - create main window
             window ??= new Window();
 
             if (window.Content is not Frame rootFrame)
@@ -91,7 +117,40 @@ namespace YAWDA
             }
 
             _ = rootFrame.Navigate(typeof(Views.MainPage), e.Arguments);
-            window.Activate();
+            
+            // Show window unless starting minimized
+            if (!settings.StartMinimized || !startupService.IsStartupMode)
+            {
+                window.Activate();
+            }
+
+            // Initialize background services
+            await InitializeBackgroundServicesAsync();
+        }
+
+        /// <summary>
+        /// Initializes background services required for operation
+        /// </summary>
+        private async Task InitializeBackgroundServicesAsync()
+        {
+            try
+            {
+                // Initialize core services
+                var reminderService = ServiceProvider.GetRequiredService<IReminderService>();
+                var systemTrayService = ServiceProvider.GetRequiredService<ISystemTrayService>();
+
+                // Start reminder service
+                await reminderService.StartAsync();
+
+                // Initialize system tray
+                await systemTrayService.InitializeAsync();
+            }
+            catch (Exception ex)
+            {
+                // Log error but continue - app should still function
+                var logger = ServiceProvider.GetRequiredService<ILogger<App>>();
+                logger.LogError(ex, "Error initializing background services");
+            }
         }
 
         /// <summary>

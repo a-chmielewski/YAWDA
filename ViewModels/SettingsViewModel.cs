@@ -15,6 +15,7 @@ namespace YAWDA.ViewModels
     {
         private readonly IDataService _dataService;
         private readonly IReminderService _reminderService;
+        private readonly IStartupService _startupService;
 
         [ObservableProperty]
         private UserSettings _settings = UserSettings.CreateDefault();
@@ -31,10 +32,11 @@ namespace YAWDA.ViewModels
         [ObservableProperty]
         private bool _isStatusMessageVisible = false;
 
-        public SettingsViewModel(IDataService dataService, IReminderService reminderService)
+        public SettingsViewModel(IDataService dataService, IReminderService reminderService, IStartupService startupService)
         {
             _dataService = dataService;
             _reminderService = reminderService;
+            _startupService = startupService;
 
             // Subscribe to property changes to track unsaved changes
             PropertyChanged += OnPropertyChanged;
@@ -57,6 +59,18 @@ namespace YAWDA.ViewModels
                 Settings.UpdateLastModified();
                 await _dataService.SaveSettingsAsync(Settings);
                 await _reminderService.UpdateSettingsAsync(Settings);
+
+                // Update startup configuration if changed
+                var startupEnabled = await _startupService.IsStartupEnabledAsync();
+                if (startupEnabled != Settings.StartWithWindows)
+                {
+                    var startupSuccess = await _startupService.SetStartupEnabledAsync(Settings.StartWithWindows);
+                    if (!startupSuccess)
+                    {
+                        ShowStatusMessage("Settings saved, but auto-startup configuration failed. Check permissions.", false);
+                        return;
+                    }
+                }
 
                 HasUnsavedChanges = false;
                 ShowStatusMessage("Settings saved successfully!", true);
@@ -112,6 +126,15 @@ namespace YAWDA.ViewModels
             {
                 HasUnsavedChanges = true;
             }
+            
+            // Track changes to individual properties
+            if (!IsLoading && e.PropertyName != nameof(IsLoading) && 
+                e.PropertyName != nameof(HasUnsavedChanges) && 
+                e.PropertyName != nameof(StatusMessage) && 
+                e.PropertyName != nameof(IsStatusMessageVisible))
+            {
+                HasUnsavedChanges = true;
+            }
         }
 
         private void ShowStatusMessage(string message, bool isSuccess)
@@ -133,7 +156,7 @@ namespace YAWDA.ViewModels
         
         public string WorkHoursText => $"{Settings.WorkHoursStart:hh\\:mm} - {Settings.WorkHoursEnd:hh\\:mm}";
 
-        public AppTheme[] AvailableThemes => new[] { AppTheme.Light, AppTheme.Dark, AppTheme.System };
+        public string[] AvailableThemes => new[] { "Light", "Dark", "System" };
 
         public int[] DisruptionLevels => new[] { 1, 2, 3, 4 };
 
@@ -148,5 +171,48 @@ namespace YAWDA.ViewModels
         public int[] ReminderIntervals => new[] { 15, 30, 45, 60, 90, 120, 180 };
 
         public int[] DataRetentionOptions => new[] { 30, 90, 180, 365, 730, 1095 };
+
+        // Startup method information
+        public string StartupMethodText => $"Method: {_startupService.GetStartupMethod()}";
+
+        // Theme management helpers
+        public string SelectedTheme
+        {
+            get => Settings.Theme.ToString();
+            set
+            {
+                if (Enum.TryParse<AppTheme>(value, out var theme) && Settings.Theme != theme)
+                {
+                    Settings.Theme = theme;
+                    OnPropertyChanged();
+                    if (!IsLoading)
+                    {
+                        HasUnsavedChanges = true;
+                    }
+                }
+            }
+        }
+
+        // Custom daily goal text helper
+        public string CustomDailyGoalText
+        {
+            get => Settings.CustomDailyGoalMilliliters?.ToString() ?? string.Empty;
+            set
+            {
+                if (string.IsNullOrWhiteSpace(value))
+                {
+                    Settings.CustomDailyGoalMilliliters = null;
+                }
+                else if (int.TryParse(value, out var goal) && goal >= 500 && goal <= 5000)
+                {
+                    Settings.CustomDailyGoalMilliliters = goal;
+                }
+                OnPropertyChanged();
+                if (!IsLoading)
+                {
+                    HasUnsavedChanges = true;
+                }
+            }
+        }
     }
 } 

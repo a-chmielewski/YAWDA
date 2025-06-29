@@ -27,8 +27,7 @@ namespace YAWDA.Views
         private void OnSettingsClicked(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
         {
             // Navigate to settings page
-            // For now, we'll show a content dialog as a placeholder
-            ShowSettingsDialog();
+            Frame.Navigate(typeof(SettingsPage));
         }
 
         private void OnStatsClicked(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
@@ -38,18 +37,7 @@ namespace YAWDA.Views
             ShowStatsDialog();
         }
 
-        private async void ShowSettingsDialog()
-        {
-            var dialog = new ContentDialog
-            {
-                Title = "Settings",
-                Content = "Settings page will be implemented in the next steps.",
-                CloseButtonText = "OK",
-                XamlRoot = this.XamlRoot
-            };
-            
-            await dialog.ShowAsync();
-        }
+
 
         private async void ShowStatsDialog()
         {
