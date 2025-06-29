@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "YAWDA (Package)": {
+      "commandName": "MsixPackage"
+    },
+    "YAWDA (Unpackaged)": {
+      "commandName": "Project"
+    }
+  }
+}
