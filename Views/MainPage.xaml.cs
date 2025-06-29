@@ -1,18 +1,67 @@
+using Microsoft.UI.Xaml.Controls;
+using YAWDA.ViewModels;
+using YAWDA.Services;
+using Microsoft.Extensions.DependencyInjection;
+
 namespace YAWDA.Views
 {
     /// <summary>
-    /// A simple page that can be used on its own or navigated to within a Frame.
+    /// Main page for daily water intake tracking and logging
     /// </summary>
-    public partial class MainPage : Page
+    public sealed partial class MainPage : Page
     {
-        int count = 0;
+        public MainPageViewModel ViewModel { get; private set; }
 
         public MainPage()
         {
             this.InitializeComponent();
+            
+            // Get ViewModel from DI container
+            var serviceProvider = ((App)App.Current).ServiceProvider;
+            ViewModel = serviceProvider.GetRequiredService<MainPageViewModel>();
+            
+            // Set DataContext
+            this.DataContext = ViewModel;
         }
 
-        private void OnCountClicked(object sender, RoutedEventArgs e)
-            => txtCount.Text = $"Current count: {count++}";
+        private void OnSettingsClicked(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
+        {
+            // Navigate to settings page
+            // For now, we'll show a content dialog as a placeholder
+            ShowSettingsDialog();
+        }
+
+        private void OnStatsClicked(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
+        {
+            // Navigate to statistics page
+            // For now, we'll show a content dialog as a placeholder
+            ShowStatsDialog();
+        }
+
+        private async void ShowSettingsDialog()
+        {
+            var dialog = new ContentDialog
+            {
+                Title = "Settings",
+                Content = "Settings page will be implemented in the next steps.",
+                CloseButtonText = "OK",
+                XamlRoot = this.XamlRoot
+            };
+            
+            await dialog.ShowAsync();
+        }
+
+        private async void ShowStatsDialog()
+        {
+            var dialog = new ContentDialog
+            {
+                Title = "Statistics",
+                Content = "Statistics page will be implemented in the next steps.",
+                CloseButtonText = "OK",
+                XamlRoot = this.XamlRoot
+            };
+            
+            await dialog.ShowAsync();
+        }
     }
 }

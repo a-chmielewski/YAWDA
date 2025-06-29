@@ -1,0 +1,253 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<UserControl
+    x:Class="YAWDA.Views.FullScreenOverlay"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:local="using:YAWDA.Views"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <!-- Full-screen background -->
+    <Grid Background="#B0000000">
+        <!-- Semi-transparent overlay -->
+        <Rectangle Fill="#40000000" />
+
+        <!-- Main content card centered on screen -->
+        <Border
+            Background="{ThemeResource AcrylicBackgroundFillColorDefaultBrush}"
+            BorderBrush="{StaticResource WaterBlueBrush}"
+            BorderThickness="2"
+            CornerRadius="16"
+            Padding="40"
+            MaxWidth="500"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Center">
+            
+            <Border.Shadow>
+                <ThemeShadow />
+            </Border.Shadow>
+
+            <StackPanel Spacing="24" HorizontalAlignment="Center">
+                <!-- Animated water drop icon -->
+                <Border
+                    Width="120"
+                    Height="120"
+                    CornerRadius="60"
+                    Background="{StaticResource WaterBlueBrush}"
+                    HorizontalAlignment="Center">
+                    <FontIcon
+                        x:Name="WaterDropIcon"
+                        Glyph="&#xE7F8;"
+                        FontFamily="Segoe Fluent Icons"
+                        FontSize="64"
+                        Foreground="White"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center" />
+                </Border>
+
+                <!-- Title and message -->
+                <StackPanel Spacing="8" HorizontalAlignment="Center">
+                    <TextBlock
+                        Text="💧 Hydration Break Time!"
+                        Style="{StaticResource HeaderTextStyle}"
+                        HorizontalAlignment="Center"
+                        FontSize="32" />
+                    
+                    <TextBlock
+                        x:Name="ReminderMessageText"
+                        Text="It's time to take a hydration break. Your body needs water to stay healthy and focused."
+                        Style="{StaticResource SubHeaderTextStyle}"
+                        TextWrapping="Wrap"
+                        HorizontalAlignment="Center"
+                        TextAlignment="Center"
+                        MaxWidth="400"
+                        LineHeight="24" />
+                </StackPanel>
+
+                <!-- Progress information -->
+                <Border
+                    Background="{StaticResource WaterLightBlueBrush}"
+                    CornerRadius="12"
+                    Padding="20"
+                    HorizontalAlignment="Stretch">
+                    <StackPanel Spacing="12">
+                        <TextBlock
+                            Text="Today's Progress"
+                            Style="{StaticResource BodyTextStyle}"
+                            FontWeight="SemiBold"
+                            HorizontalAlignment="Center" />
+                        
+                        <ProgressBar
+                            x:Name="ProgressBar"
+                            Value="37"
+                            Maximum="100"
+                            Style="{StaticResource WaterProgressBarStyle}"
+                            Height="16" />
+                        
+                        <TextBlock
+                            x:Name="ProgressText"
+                            Text="850ml / 2310ml (37% of daily goal)"
+                            Style="{StaticResource BodyTextStyle}"
+                            HorizontalAlignment="Center"
+                            FontWeight="Medium" />
+                    </StackPanel>
+                </Border>
+
+                <!-- Action buttons -->
+                <StackPanel Spacing="12" HorizontalAlignment="Center">
+                    <TextBlock
+                        Text="How much did you drink?"
+                        Style="{StaticResource BodyTextStyle}"
+                        HorizontalAlignment="Center"
+                        FontWeight="Medium" />
+                    
+                    <StackPanel Orientation="Horizontal" Spacing="12" HorizontalAlignment="Center">
+                        <Button
+                            x:Name="Drink200Button"
+                            Content="200ml"
+                            Style="{StaticResource WaterIntakeButtonStyle}"
+                            Click="OnDrinkAmountClicked"
+                            Tag="200"
+                            MinWidth="90" />
+                        
+                        <Button
+                            x:Name="Drink300Button"
+                            Content="300ml"
+                            Style="{StaticResource WaterIntakeButtonStyle}"
+                            Click="OnDrinkAmountClicked"
+                            Tag="300"
+                            MinWidth="90" />
+                        
+                        <Button
+                            x:Name="Drink500Button"
+                            Content="500ml"
+                            Style="{StaticResource WaterIntakeButtonStyle}"
+                            Click="OnDrinkAmountClicked"
+                            Tag="500"
+                            MinWidth="90" />
+                    </StackPanel>
+                </StackPanel>
+
+                <!-- Secondary actions -->
+                <StackPanel Orientation="Horizontal" Spacing="16" HorizontalAlignment="Center">
+                    <Button
+                        x:Name="SnoozeButton"
+                        Content="⏰ Remind me in 15 minutes"
+                        Style="{StaticResource SecondaryButtonStyle}"
+                        Click="OnSnoozeClicked"
+                        Padding="16,8" />
+                    
+                    <Button
+                        x:Name="DismissButton"
+                        Content="✕ Dismiss"
+                        Style="{StaticResource SecondaryButtonStyle}"
+                        Click="OnDismissClicked"
+                        Padding="16,8" />
+                </StackPanel>
+
+                <!-- Tips section -->
+                <Border
+                    Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
+                    CornerRadius="8"
+                    Padding="16"
+                    Margin="0,8,0,0">
+                    <StackPanel Spacing="8">
+                        <TextBlock
+                            Text="💡 Hydration Tip"
+                            Style="{StaticResource CaptionTextStyle}"
+                            FontWeight="SemiBold" />
+                        <TextBlock
+                            x:Name="HydrationTipText"
+                            Text="Regular water intake improves focus, energy levels, and overall productivity."
+                            Style="{StaticResource CaptionTextStyle}"
+                            TextWrapping="Wrap" />
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </Border>
+
+        <!-- Animations -->
+        <Grid.Resources>
+            <Storyboard x:Name="FadeInAnimation">
+                <DoubleAnimation
+                    Storyboard.TargetName="WaterDropIcon"
+                    Storyboard.TargetProperty="Opacity"
+                    From="0"
+                    To="1"
+                    Duration="0:0:0.5" />
+                <DoubleAnimation
+                    Storyboard.TargetProperty="Opacity"
+                    From="0"
+                    To="1"
+                    Duration="0:0:0.4" />
+                <DoubleAnimation
+                    Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleX)"
+                    From="0.8"
+                    To="1.0"
+                    Duration="0:0:0.4">
+                    <DoubleAnimation.EasingFunction>
+                        <BackEase EasingMode="EaseOut" />
+                    </DoubleAnimation.EasingFunction>
+                </DoubleAnimation>
+                <DoubleAnimation
+                    Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)"
+                    From="0.8"
+                    To="1.0"
+                    Duration="0:0:0.4">
+                    <DoubleAnimation.EasingFunction>
+                        <BackEase EasingMode="EaseOut" />
+                    </DoubleAnimation.EasingFunction>
+                </DoubleAnimation>
+            </Storyboard>
+
+            <Storyboard x:Name="FadeOutAnimation">
+                <DoubleAnimation
+                    Storyboard.TargetProperty="Opacity"
+                    From="1"
+                    To="0"
+                    Duration="0:0:0.3" />
+                <DoubleAnimation
+                    Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleX)"
+                    From="1.0"
+                    To="0.9"
+                    Duration="0:0:0.3" />
+                <DoubleAnimation
+                    Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)"
+                    From="1.0"
+                    To="0.9"
+                    Duration="0:0:0.3" />
+            </Storyboard>
+
+            <!-- Pulsing animation for water drop -->
+            <Storyboard x:Name="PulseAnimation" RepeatBehavior="Forever">
+                <DoubleAnimation
+                    Storyboard.TargetName="WaterDropIcon"
+                    Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleX)"
+                    From="1.0"
+                    To="1.1"
+                    Duration="0:0:1"
+                    AutoReverse="True">
+                    <DoubleAnimation.EasingFunction>
+                        <SineEase EasingMode="EaseInOut" />
+                    </DoubleAnimation.EasingFunction>
+                </DoubleAnimation>
+                <DoubleAnimation
+                    Storyboard.TargetName="WaterDropIcon"
+                    Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)"
+                    From="1.0"
+                    To="1.1"
+                    Duration="0:0:1"
+                    AutoReverse="True">
+                    <DoubleAnimation.EasingFunction>
+                        <SineEase EasingMode="EaseInOut" />
+                    </DoubleAnimation.EasingFunction>
+                </DoubleAnimation>
+            </Storyboard>
+        </Grid.Resources>
+
+        <Grid.RenderTransform>
+            <ScaleTransform ScaleX="0.8" ScaleY="0.8" />
+        </Grid.RenderTransform>
+    </Grid>
+</UserControl> 

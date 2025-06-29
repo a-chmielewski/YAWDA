@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.UI.Xaml.Navigation;
 using YAWDA.Services;
 using YAWDA.Views;
+using YAWDA.ViewModels;
 
 namespace YAWDA
 {
@@ -18,6 +19,20 @@ namespace YAWDA
         /// Gets the current service provider instance
         /// </summary>
         public static IServiceProvider? Services { get; private set; }
+
+        /// <summary>
+        /// Gets the service provider for dependency injection
+        /// </summary>
+        public IServiceProvider ServiceProvider => serviceProvider ?? throw new InvalidOperationException("ServiceProvider not initialized");
+
+        /// <summary>
+        /// Gets the main window instance
+        /// </summary>
+        /// <returns>The main window, or null if not available</returns>
+        public Window? GetMainWindow()
+        {
+            return window;
+        }
 
         /// <summary>
         /// Initializes the singleton application object.  This is the first line of authored code
@@ -46,7 +61,14 @@ namespace YAWDA
             // Register service interfaces - implementations will be added in later steps
             services.AddSingleton<IDataService, DataService>();
             services.AddSingleton<IReminderService, ReminderService>();
+            services.AddSingleton<ISystemTrayService, SystemTrayService>();
+            services.AddSingleton<IOverlayService, OverlayService>();
             services.AddSingleton<INotificationService, NotificationService>();
+
+            // Register ViewModels
+            services.AddTransient<MainPageViewModel>();
+            services.AddTransient<SettingsViewModel>();
+            services.AddTransient<StatsViewModel>();
 
             serviceProvider = services.BuildServiceProvider();
             Services = serviceProvider;

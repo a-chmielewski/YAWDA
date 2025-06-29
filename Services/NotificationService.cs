@@ -17,6 +17,8 @@ namespace YAWDA.Services
     {
         private readonly ILogger<NotificationService> _logger;
         private readonly IDataService _dataService;
+        private readonly ISystemTrayService _systemTrayService;
+        private readonly IOverlayService _overlayService;
         private AppNotificationManager? _notificationManager;
         private readonly Queue<NotificationQueueItem> _notificationQueue = new();
         private bool _disposed = false;
@@ -33,10 +35,12 @@ namespace YAWDA.Services
 
         public event EventHandler<NotificationActionEventArgs>? NotificationActionReceived;
 
-        public NotificationService(ILogger<NotificationService> logger, IDataService dataService)
+        public NotificationService(ILogger<NotificationService> logger, IDataService dataService, ISystemTrayService systemTrayService, IOverlayService overlayService)
         {
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _dataService = dataService ?? throw new ArgumentNullException(nameof(dataService));
+            _systemTrayService = systemTrayService ?? throw new ArgumentNullException(nameof(systemTrayService));
+            _overlayService = overlayService ?? throw new ArgumentNullException(nameof(overlayService));
         }
 
         /// <summary>
@@ -57,6 +61,9 @@ namespace YAWDA.Services
 
                 // Register notification templates
                 await RegisterNotificationTemplatesAsync();
+
+                // Subscribe to overlay events
+                _overlayService.OverlayActionReceived += OnOverlayActionReceived;
 
                 _logger.LogInformation("NotificationService initialized successfully");
             }
@@ -132,13 +139,9 @@ namespace YAWDA.Services
         {
             try
             {
-                var progress = (double)currentIntake / dailyGoal * 100;
-                var tooltip = $"YAWDA - Water Reminder\n{currentIntake}ml / {dailyGoal}ml ({progress:F0}%)\nNext reminder in: {GetNextReminderTime()}";
-                
-                // This will be implemented when we add system tray integration in Step 7
-                // For now, just log the tooltip update
-                _logger.LogDebug("Tray tooltip updated: {CurrentIntake}ml / {DailyGoal}ml ({Progress:F0}%)", 
-                    currentIntake, dailyGoal, progress);
+                var nextReminderTime = GetNextReminderTime();
+                _systemTrayService.UpdateTooltip(currentIntake, dailyGoal, nextReminderTime);
+                _logger.LogDebug("Tray tooltip updated: {CurrentIntake}ml / {DailyGoal}ml", currentIntake, dailyGoal);
             }
             catch (Exception ex)
             {
@@ -154,6 +157,11 @@ namespace YAWDA.Services
 
             try
             {
+                // Get current progress for overlay displays
+                var currentIntake = await _dataService.GetTodaysTotalIntakeAsync();
+                var settings = await _dataService.LoadSettingsAsync();
+                var dailyGoal = settings.EffectiveDailyGoalMilliliters;
+
                 switch (level)
                 {
                     case 1:
@@ -161,12 +169,28 @@ namespace YAWDA.Services
                         await ShowStandardReminderToastAsync(message, level);
                         break;
                     case 2:
-                        // Enhanced toast with longer duration and sound
-                        await ShowEnhancedReminderToastAsync(message, level);
+                        // Banner overlay with enhanced toast fallback
+                        try
+                        {
+                            await _overlayService.ShowBannerOverlayAsync(message, currentIntake, dailyGoal);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning(ex, "Banner overlay failed, falling back to enhanced toast");
+                            await ShowEnhancedReminderToastAsync(message, level);
+                        }
                         break;
                     case 3:
-                        // Persistent toast with repeated alerts
-                        await ShowPersistentReminderToastAsync(message, level);
+                        // Full-screen overlay with persistent toast fallback
+                        try
+                        {
+                            await _overlayService.ShowFullScreenOverlayAsync(message, currentIntake, dailyGoal);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning(ex, "Full-screen overlay failed, falling back to persistent toast");
+                            await ShowPersistentReminderToastAsync(message, level);
+                        }
                         break;
                     case 4:
                         // High-priority toast with system attention
@@ -189,10 +213,17 @@ namespace YAWDA.Services
         /// <inheritdoc />
         public async Task InitializeTrayIconAsync()
         {
-            // This will be implemented in Step 7: System Tray Integration
-            // For now, just log that it's called
-            _logger.LogInformation("Tray icon initialization called - will be implemented in Step 7");
-            await Task.CompletedTask;
+            try
+            {
+                _logger.LogInformation("Initializing tray icon integration...");
+                await _systemTrayService.InitializeAsync();
+                _logger.LogInformation("Tray icon integration initialized successfully");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to initialize tray icon integration");
+                throw;
+            }
         }
 
         /// <summary>
@@ -469,12 +500,65 @@ namespace YAWDA.Services
         }
 
         /// <summary>
-        /// Gets the next reminder time (placeholder for tray tooltip)
+        /// Handles overlay action events and forwards them as notification actions
+        /// </summary>
+        private async void OnOverlayActionReceived(object? sender, OverlayActionEventArgs e)
+        {
+            try
+            {
+                _logger.LogDebug("Overlay action received: {ActionType}, Level: {Level}", e.ActionType, e.DisruptionLevel);
+
+                switch (e.ActionType)
+                {
+                    case OverlayActionType.Drink:
+                        // Log water intake and notify
+                        await _dataService.LogWaterIntakeAsync(e.Amount, $"reminder_level_{e.DisruptionLevel}");
+                        NotificationActionReceived?.Invoke(this, new NotificationActionEventArgs
+                        {
+                            Action = "drink",
+                            Amount = e.Amount,
+                            Timestamp = DateTime.Now
+                        });
+                        break;
+
+                    case OverlayActionType.Snooze:
+                        NotificationActionReceived?.Invoke(this, new NotificationActionEventArgs
+                        {
+                            Action = "snooze",
+                            Timestamp = DateTime.Now
+                        });
+                        break;
+
+                    case OverlayActionType.Dismiss:
+                    case OverlayActionType.Timeout:
+                        NotificationActionReceived?.Invoke(this, new NotificationActionEventArgs
+                        {
+                            Action = "dismiss",
+                            Timestamp = DateTime.Now
+                        });
+                        break;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to handle overlay action: {ActionType}", e.ActionType);
+            }
+        }
+
+        /// <summary>
+        /// Gets the next reminder time for tray tooltip
         /// </summary>
         private string GetNextReminderTime()
         {
-            // This will be enhanced when integrating with ReminderService
-            return "Unknown";
+            try
+            {
+                // For now, return a placeholder - this will be enhanced when we integrate with ReminderService
+                return "calculating...";
+            }
+            catch
+            {
+                return "Unknown";
+            }
         }
 
                  /// <summary>
@@ -533,6 +617,9 @@ namespace YAWDA.Services
                         _notificationManager.Unregister();
                         _notificationManager = null;
                     }
+
+                    // Unsubscribe from overlay events
+                    _overlayService.OverlayActionReceived -= OnOverlayActionReceived;
 
                     _notificationQueue.Clear();
                     _logger.LogDebug("NotificationService disposed");

@@ -1,0 +1,169 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<UserControl
+    x:Class="YAWDA.Views.BannerOverlay"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:local="using:YAWDA.Views"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <Border
+        Background="{StaticResource WaterBlueBrush}"
+        Opacity="0.95"
+        CornerRadius="0,0,12,12"
+        BorderThickness="0,0,0,2"
+        BorderBrush="{StaticResource WaterBlueBrush}"
+        MinHeight="80">
+        
+        <Border.Shadow>
+            <ThemeShadow />
+        </Border.Shadow>
+
+        <Grid Padding="20,12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <!-- Water Drop Icon -->
+            <Border
+                Grid.Column="0"
+                Width="48"
+                Height="48"
+                CornerRadius="24"
+                Background="White"
+                Margin="0,0,16,0"
+                VerticalAlignment="Center">
+                <FontIcon
+                    Glyph="&#xE7F8;"
+                    FontFamily="Segoe Fluent Icons"
+                    FontSize="24"
+                    Foreground="{StaticResource WaterBlueBrush}"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center" />
+            </Border>
+
+            <!-- Reminder Content -->
+            <StackPanel
+                Grid.Column="1"
+                VerticalAlignment="Center"
+                Spacing="4">
+                <TextBlock
+                    x:Name="ReminderTitleText"
+                    Text="💧 Water Reminder"
+                    FontSize="16"
+                    FontWeight="SemiBold"
+                    Foreground="White" />
+                <TextBlock
+                    x:Name="ReminderMessageText"
+                    Text="Time to hydrate! Stay healthy and productive."
+                    FontSize="14"
+                    Foreground="White"
+                    Opacity="0.9"
+                    TextWrapping="Wrap"
+                    MaxLines="2" />
+                <TextBlock
+                    x:Name="ProgressText"
+                    Text="Daily progress: 850ml / 2310ml (37%)"
+                    FontSize="12"
+                    Foreground="White"
+                    Opacity="0.8" />
+            </StackPanel>
+
+            <!-- Action Buttons -->
+            <StackPanel
+                Grid.Column="2"
+                Orientation="Horizontal"
+                Spacing="8"
+                VerticalAlignment="Center"
+                Margin="16,0,16,0">
+                
+                <Button
+                    x:Name="DrinkButton"
+                    Content="💧 I Drank"
+                    Background="White"
+                    Foreground="{StaticResource WaterBlueBrush}"
+                    BorderThickness="0"
+                    CornerRadius="16"
+                    Padding="12,6"
+                    FontSize="12"
+                    FontWeight="Medium"
+                    Click="OnDrinkClicked" />
+                
+                <Button
+                    x:Name="SnoozeButton"
+                    Content="⏰ 10min"
+                    Background="Transparent"
+                    Foreground="White"
+                    BorderBrush="White"
+                    BorderThickness="1"
+                    CornerRadius="16"
+                    Padding="12,6"
+                    FontSize="12"
+                    Click="OnSnoozeClicked" />
+            </StackPanel>
+
+            <!-- Close Button -->
+            <Button
+                x:Name="CloseButton"
+                Grid.Column="3"
+                Width="32"
+                Height="32"
+                Background="Transparent"
+                BorderThickness="0"
+                CornerRadius="16"
+                VerticalAlignment="Top"
+                Click="OnCloseClicked">
+                <FontIcon
+                    Glyph="&#xE711;"
+                    FontFamily="Segoe Fluent Icons"
+                    FontSize="12"
+                    Foreground="White" />
+            </Button>
+        </Grid>
+
+        <!-- Auto-hide Animation -->
+        <Border.Resources>
+            <Storyboard x:Name="SlideInAnimation">
+                <DoubleAnimation
+                    Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.Y)"
+                    From="-100"
+                    To="0"
+                    Duration="0:0:0.4">
+                    <DoubleAnimation.EasingFunction>
+                        <CubicEase EasingMode="EaseOut" />
+                    </DoubleAnimation.EasingFunction>
+                </DoubleAnimation>
+                <DoubleAnimation
+                    Storyboard.TargetProperty="Opacity"
+                    From="0"
+                    To="0.95"
+                    Duration="0:0:0.4" />
+            </Storyboard>
+
+            <Storyboard x:Name="SlideOutAnimation">
+                <DoubleAnimation
+                    Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.Y)"
+                    From="0"
+                    To="-100"
+                    Duration="0:0:0.3">
+                    <DoubleAnimation.EasingFunction>
+                        <CubicEase EasingMode="EaseIn" />
+                    </DoubleAnimation.EasingFunction>
+                </DoubleAnimation>
+                <DoubleAnimation
+                    Storyboard.TargetProperty="Opacity"
+                    From="0.95"
+                    To="0"
+                    Duration="0:0:0.3" />
+            </Storyboard>
+        </Border.Resources>
+
+        <Border.RenderTransform>
+            <TranslateTransform Y="-100" />
+        </Border.RenderTransform>
+    </Border>
+</UserControl> 
