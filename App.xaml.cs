@@ -44,9 +44,9 @@ namespace YAWDA
             });
 
             // Register service interfaces - implementations will be added in later steps
-            // services.AddSingleton<IDataService, DataService>();
-            // services.AddSingleton<IReminderService, ReminderService>();
-            // services.AddSingleton<INotificationService, NotificationService>();
+            services.AddSingleton<IDataService, DataService>();
+            services.AddSingleton<IReminderService, ReminderService>();
+            services.AddSingleton<INotificationService, NotificationService>();
 
             serviceProvider = services.BuildServiceProvider();
             Services = serviceProvider;

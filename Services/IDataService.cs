@@ -69,5 +69,10 @@ namespace YAWDA.Services
         /// <param name="startDate">Start date for export</param>
         /// <param name="endDate">End date for export</param>
         Task<string> ExportDataToCsvAsync(DateTime startDate, DateTime endDate);
+
+        /// <summary>
+        /// Gets database statistics for monitoring and debugging
+        /// </summary>
+        Task<Dictionary<string, object?>> GetDatabaseStatsAsync();
     }
 } 
