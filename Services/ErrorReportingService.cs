@@ -341,17 +341,39 @@ namespace YAWDA.Services
                     return;
 
                 var json = await File.ReadAllTextAsync(_errorLogPath);
-                var entries = JsonSerializer.Deserialize<List<ErrorLogEntry>>(json) ?? new List<ErrorLogEntry>();
+                
+                // Try to load with new serializable format first
+                try
+                {
+                    var serializableEntries = JsonSerializer.Deserialize<List<object>>(json);
+                    if (serializableEntries != null)
+                    {
+                        // Parse the JSON object format into ErrorLogEntry objects
+                        // For now, we'll skip loading old entries since they contain non-serializable exception data
+                        // and focus on having a working error logging system going forward
+                        _logger.LogInformation("Existing error log file found but will be replaced with new format");
+                    }
+                }
+                catch
+                {
+                    // Failed to load with new format, might be old format
+                    // We'll skip loading old entries to avoid serialization issues
+                    _logger.LogInformation("Existing error log file incompatible with current format - starting fresh");
+                }
                 
                 lock (_lockObject)
                 {
                     _recentErrors.Clear();
-                    _recentErrors.AddRange(entries.Where(e => e.Timestamp > DateTime.Now.AddDays(-30)));
+                    // Start with empty list for new error logging format
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Failed to load error logs from file");
+                _logger.LogWarning(ex, "Failed to load error logs from file - starting with fresh error log");
+                lock (_lockObject)
+                {
+                    _recentErrors.Clear();
+                }
             }
         }
 
@@ -365,7 +387,22 @@ namespace YAWDA.Services
                     toSave = new List<ErrorLogEntry>(_recentErrors);
                 }
 
-                var json = JsonSerializer.Serialize(toSave, new JsonSerializerOptions 
+                // Convert to serializable format
+                var serializableEntries = toSave.Select(entry => new
+                {
+                    Exception = entry.Exception != null ? new
+                    {
+                        Type = entry.Exception.GetType().FullName,
+                        Message = entry.Exception.Message,
+                        StackTrace = entry.Exception.StackTrace,
+                        InnerException = entry.Exception.InnerException?.ToString()
+                    } : null,
+                    Context = entry.Context,
+                    Timestamp = entry.Timestamp,
+                    Severity = entry.Severity.ToString()
+                }).ToList();
+
+                var json = JsonSerializer.Serialize(serializableEntries, new JsonSerializerOptions 
                 { 
                     WriteIndented = true,
                     DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull

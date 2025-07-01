@@ -5,6 +5,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using YAWDA.Models;
 using YAWDA.Services;
+using Microsoft.UI.Dispatching;
 
 namespace YAWDA.ViewModels
 {
@@ -16,6 +17,7 @@ namespace YAWDA.ViewModels
         private readonly IDataService _dataService;
         private readonly IReminderService _reminderService;
         private readonly IStartupService _startupService;
+        private readonly DispatcherQueue _dispatcherQueue;
 
         [ObservableProperty]
         private UserSettings _settings = UserSettings.CreateDefault();
@@ -37,12 +39,15 @@ namespace YAWDA.ViewModels
             _dataService = dataService;
             _reminderService = reminderService;
             _startupService = startupService;
+            
+            // Get the DispatcherQueue for UI thread marshaling
+            _dispatcherQueue = DispatcherQueue.GetForCurrentThread();
 
             // Subscribe to property changes to track unsaved changes
             PropertyChanged += OnPropertyChanged;
 
-            // Initialize async
-            Task.Run(LoadSettingsAsync);
+            // Initialize async on UI thread to avoid COM exceptions
+            _ = LoadSettingsAsync();
         }
 
         [RelayCommand]
@@ -137,15 +142,40 @@ namespace YAWDA.ViewModels
             }
         }
 
+        /// <summary>
+        /// Safely updates UI properties from any thread by marshaling to UI thread
+        /// </summary>
+        private void UpdateUIProperty(Action updateAction)
+        {
+            if (_dispatcherQueue.HasThreadAccess)
+            {
+                // Already on UI thread, execute directly
+                updateAction();
+            }
+            else
+            {
+                // Marshal to UI thread
+                _dispatcherQueue.TryEnqueue(() => updateAction());
+            }
+        }
+
         private void ShowStatusMessage(string message, bool isSuccess)
         {
-            StatusMessage = message;
-            IsStatusMessageVisible = true;
-
-            // Hide message after 3 seconds
-            Task.Run(async () =>
+            UpdateUIProperty(() =>
             {
-                await Task.Delay(3000);
+                StatusMessage = message;
+                IsStatusMessageVisible = true;
+            });
+
+            // Hide message after 3 seconds using async/await instead of Task.Run
+            _ = HideStatusMessageAfterDelayAsync();
+        }
+
+        private async Task HideStatusMessageAfterDelayAsync()
+        {
+            await Task.Delay(3000);
+            UpdateUIProperty(() =>
+            {
                 IsStatusMessageVisible = false;
                 StatusMessage = string.Empty;
             });

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading.Tasks;
@@ -7,6 +8,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using YAWDA.Models;
 using YAWDA.Services;
+using Microsoft.UI.Dispatching;
 
 namespace YAWDA.ViewModels
 {
@@ -16,6 +18,7 @@ namespace YAWDA.ViewModels
     public partial class StatsViewModel : ObservableObject
     {
         private readonly IDataService _dataService;
+        private readonly DispatcherQueue _dispatcherQueue;
 
         [ObservableProperty]
         private DailyStats? _todaysStats;
@@ -60,9 +63,29 @@ namespace YAWDA.ViewModels
         public StatsViewModel(IDataService dataService)
         {
             _dataService = dataService;
+            
+            // Get the DispatcherQueue for UI thread marshaling
+            _dispatcherQueue = DispatcherQueue.GetForCurrentThread();
 
-            // Initialize async
-            Task.Run(LoadStatsAsync);
+            // Initialize async on UI thread to avoid COM exceptions
+            _ = LoadStatsAsync();
+        }
+
+        /// <summary>
+        /// Safely updates UI properties from any thread by marshaling to UI thread
+        /// </summary>
+        private void UpdateUIProperty(Action updateAction)
+        {
+            if (_dispatcherQueue.HasThreadAccess)
+            {
+                // Already on UI thread, execute directly
+                updateAction();
+            }
+            else
+            {
+                // Marshal to UI thread
+                _dispatcherQueue.TryEnqueue(() => updateAction());
+            }
         }
 
         [RelayCommand]
@@ -70,10 +93,11 @@ namespace YAWDA.ViewModels
         {
             try
             {
-                IsLoading = true;
+                UpdateUIProperty(() => IsLoading = true);
 
                 // Load today's stats
-                TodaysStats = await _dataService.GetDailyStatsAsync(DateTime.Today);
+                var todaysStats = await _dataService.GetDailyStatsAsync(DateTime.Today);
+                UpdateUIProperty(() => TodaysStats = todaysStats);
 
                 // Load weekly stats (last 7 days)
                 await LoadWeeklyStatsAsync();
@@ -84,8 +108,8 @@ namespace YAWDA.ViewModels
                 // Load recent intake history (last 20 records)
                 await LoadRecentHistoryAsync();
 
-                // Calculate summary statistics
-                CalculateSummaryStats();
+                // Calculate summary statistics on UI thread
+                UpdateUIProperty(() => CalculateSummaryStats());
             }
             catch (Exception ex)
             {
@@ -93,7 +117,7 @@ namespace YAWDA.ViewModels
             }
             finally
             {
-                IsLoading = false;
+                UpdateUIProperty(() => IsLoading = false);
             }
         }
 
@@ -134,13 +158,23 @@ namespace YAWDA.ViewModels
             var endDate = DateTime.Today;
             var startDate = endDate.AddDays(-6); // Last 7 days including today
 
-            WeeklyStats.Clear();
+            var weeklyStatsList = new List<DailyStats>();
             
             for (var date = startDate; date <= endDate; date = date.AddDays(1))
             {
                 var stats = await _dataService.GetDailyStatsAsync(date);
-                WeeklyStats.Add(stats);
+                weeklyStatsList.Add(stats);
             }
+
+            // Update UI collection on UI thread
+            UpdateUIProperty(() =>
+            {
+                WeeklyStats.Clear();
+                foreach (var stats in weeklyStatsList)
+                {
+                    WeeklyStats.Add(stats);
+                }
+            });
         }
 
         private async Task LoadMonthlyStatsAsync()
@@ -148,25 +182,40 @@ namespace YAWDA.ViewModels
             var endDate = DateTime.Today;
             var startDate = endDate.AddDays(-29); // Last 30 days including today
 
-            MonthlyStats.Clear();
+            var monthlyStatsList = new List<DailyStats>();
             
             for (var date = startDate; date <= endDate; date = date.AddDays(1))
             {
                 var stats = await _dataService.GetDailyStatsAsync(date);
-                MonthlyStats.Add(stats);
+                monthlyStatsList.Add(stats);
             }
+
+            // Update UI collection on UI thread
+            UpdateUIProperty(() =>
+            {
+                MonthlyStats.Clear();
+                foreach (var stats in monthlyStatsList)
+                {
+                    MonthlyStats.Add(stats);
+                }
+            });
         }
 
         private async Task LoadRecentHistoryAsync()
         {
             var startDate = DateTime.Today.AddDays(-7);
             var records = await _dataService.GetIntakeHistoryAsync(startDate, DateTime.Today);
+            var recentRecords = records.OrderByDescending(r => r.Timestamp).Take(20).ToList();
             
-            RecentIntakeHistory.Clear();
-            foreach (var record in records.OrderByDescending(r => r.Timestamp).Take(20))
+            // Update UI collection on UI thread
+            UpdateUIProperty(() =>
             {
-                RecentIntakeHistory.Add(record);
-            }
+                RecentIntakeHistory.Clear();
+                foreach (var record in recentRecords)
+                {
+                    RecentIntakeHistory.Add(record);
+                }
+            });
         }
 
         private void CalculateSummaryStats()
