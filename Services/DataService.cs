@@ -26,6 +26,9 @@ namespace YAWDA.Services
         private const string DatabaseFileName = "yawda.db";
         private const string SettingsFileName = "settings.json";
 
+        /// <inheritdoc />
+        public bool IsInitialized => _connection != null && _connection.State == ConnectionState.Open;
+
         public DataService(ILogger<DataService> logger)
         {
             _logger = logger;

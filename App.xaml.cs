@@ -182,6 +182,9 @@ namespace YAWDA
                     Title = "YAWDA - Yet Another Water Drinking App"
                 };
                 
+                // Configure window for modern, compact design
+                ConfigureModernWindow(window);
+                
                 // IMPORTANT: Add window closing handler to prevent app exit when tray is disabled
                 window.Closed += OnMainWindowClosed;
                 
@@ -247,23 +250,115 @@ namespace YAWDA
         }
 
         /// <summary>
-        /// Handles main window closing - keep app alive for now since tray is disabled
+        /// Handles main window closing - allow window to close but keep background services running
         /// </summary>
         private void OnMainWindowClosed(object sender, Microsoft.UI.Xaml.WindowEventArgs e)
         {
-            // IMPORTANT: Cancel the close event to keep app alive for background services
-            // Since system tray is disabled, we need the app to stay running for reminders
-            e.Handled = true;
-            
-            // Hide the window instead of closing it
-            if (window != null)
+            try
             {
-                // For now, just minimize the window so reminders can continue working
-                // In the future, when tray icon works, we can hide to system tray instead
-                System.Diagnostics.Debug.WriteLine("Main window close prevented - hiding to maintain background services");
+                System.Diagnostics.Debug.WriteLine("Main window closing - background services will continue running");
                 
-                // Since WinUI 3 doesn't have window hiding, we'll just leave it minimized
-                // The user can re-open it from taskbar or close from there if needed
+                // Allow the window to close normally
+                // Don't set e.Handled = true, let the window close
+                
+                // Set window reference to null since it's closing
+                window = null;
+                
+                // Background services (reminders, system tray) will continue running
+                // The app process will stay alive due to the background keep-alive task
+                System.Diagnostics.Debug.WriteLine("✓ Main window closed, background services still active");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error during window close: {ex.Message}");
+                // Don't prevent closing even if there's an error
+            }
+        }
+
+        /// <summary>
+        /// Configures the window for modern, compact design
+        /// </summary>
+        private void ConfigureModernWindow(Window window)
+        {
+            try
+            {
+                // Get the AppWindow for advanced configuration
+                var appWindow = window.AppWindow;
+                
+                // Set window size to fit content (800px content + 40px margins + some padding)
+                // Calculate optimal size: content width + margins + title bar height
+                int windowWidth = 900;  // 800px content + 40px margins + 60px extra padding for safety
+                int windowHeight = 1000; // Increased from 580 to provide more vertical space
+                
+                // Center the window on screen - use simpler approach
+                // Get primary display area
+                var displayArea = Microsoft.UI.Windowing.DisplayArea.Primary;
+                int centerX = (displayArea.OuterBounds.Width - windowWidth) / 2;
+                int centerY = (displayArea.OuterBounds.Height - windowHeight) / 2;
+                
+                // Set size and position
+                appWindow.MoveAndResize(new Windows.Graphics.RectInt32(centerX, centerY, windowWidth, windowHeight));
+                
+                // Configure modern window properties
+                if (Microsoft.UI.Windowing.AppWindowTitleBar.IsCustomizationSupported())
+                {
+                    var titleBar = appWindow.TitleBar;
+                    
+                    // Enable custom title bar
+                    titleBar.ExtendsContentIntoTitleBar = true;
+                    
+                    // Set title bar colors for modern look
+                    titleBar.BackgroundColor = Windows.UI.Color.FromArgb(255, 243, 243, 243); // Light gray
+                    titleBar.ForegroundColor = Windows.UI.Color.FromArgb(255, 32, 32, 32); // Dark text
+                    titleBar.InactiveBackgroundColor = Windows.UI.Color.FromArgb(255, 248, 248, 248);
+                    titleBar.InactiveForegroundColor = Windows.UI.Color.FromArgb(255, 128, 128, 128);
+                    
+                    // Set button colors
+                    titleBar.ButtonBackgroundColor = Windows.UI.Color.FromArgb(0, 0, 0, 0); // Transparent
+                    titleBar.ButtonForegroundColor = Windows.UI.Color.FromArgb(255, 32, 32, 32);
+                    titleBar.ButtonHoverBackgroundColor = Windows.UI.Color.FromArgb(255, 229, 229, 229);
+                    titleBar.ButtonHoverForegroundColor = Windows.UI.Color.FromArgb(255, 32, 32, 32);
+                    titleBar.ButtonPressedBackgroundColor = Windows.UI.Color.FromArgb(255, 204, 204, 204);
+                    titleBar.ButtonPressedForegroundColor = Windows.UI.Color.FromArgb(255, 32, 32, 32);
+                    
+                    // Inactive button colors
+                    titleBar.ButtonInactiveBackgroundColor = Windows.UI.Color.FromArgb(0, 0, 0, 0);
+                    titleBar.ButtonInactiveForegroundColor = Windows.UI.Color.FromArgb(255, 128, 128, 128);
+                }
+                
+                // Set window presenter for modern look - use simpler approach
+                try
+                {
+                    var presenter = appWindow.Presenter as Microsoft.UI.Windowing.OverlappedPresenter;
+                    if (presenter != null)
+                    {
+                        // Disable resize and maximize for a fixed-size focused app experience
+                        presenter.IsMaximizable = false;
+                        presenter.IsMinimizable = true;
+                        presenter.IsResizable = false; // Fixed size for consistent layout
+                        
+                        // Also disable resize mode to ensure it's truly fixed
+                        presenter.SetBorderAndTitleBar(true, true);
+                        
+                        System.Diagnostics.Debug.WriteLine("✓ Window presenter configured: non-resizable, non-maximizable");
+                    }
+                    else
+                    {
+                        System.Diagnostics.Debug.WriteLine("⚠️ Could not cast presenter to OverlappedPresenter");
+                    }
+                }
+                catch (Exception presenterEx)
+                {
+                    System.Diagnostics.Debug.WriteLine($"⚠️ Could not configure window presenter: {presenterEx.Message}");
+                    // Continue without presenter customization
+                }
+                
+                System.Diagnostics.Debug.WriteLine($"✓ Modern window configured: {windowWidth}x{windowHeight} at ({centerX}, {centerY})");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"⚠️ Failed to configure modern window: {ex.Message}");
+                // Continue without modern styling if configuration fails
             }
         }
 

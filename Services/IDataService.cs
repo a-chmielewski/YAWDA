@@ -11,6 +11,11 @@ namespace YAWDA.Services
     public interface IDataService
     {
         /// <summary>
+        /// Gets whether the database has been initialized
+        /// </summary>
+        bool IsInitialized { get; }
+
+        /// <summary>
         /// Initializes the database and creates tables if needed
         /// </summary>
         Task InitializeAsync();

@@ -54,6 +54,9 @@ namespace YAWDA.Views
             // Set DataContext after InitializeComponent
             this.DataContext = ViewModel;
             
+            // Configure custom title bar
+            ConfigureCustomTitleBar();
+            
             System.Diagnostics.Debug.WriteLine("MainPage constructor completed successfully");
         }
 
@@ -70,8 +73,6 @@ namespace YAWDA.Views
             ShowStatsDialog();
         }
 
-
-
         private async void ShowStatsDialog()
         {
             var dialog = new ContentDialog
@@ -83,6 +84,37 @@ namespace YAWDA.Views
             };
             
             await dialog.ShowAsync();
+        }
+
+        /// <summary>
+        /// Configures the custom title bar drag region and properties
+        /// </summary>
+        private void ConfigureCustomTitleBar()
+        {
+            try
+            {
+                // Get the main window
+                var mainWindow = ((App)App.Current).GetMainWindow();
+                if (mainWindow?.AppWindow?.TitleBar != null)
+                {
+                    var titleBar = mainWindow.AppWindow.TitleBar;
+                    
+                    // Set the drag region for the custom title bar
+                    if (titleBar.ExtendsContentIntoTitleBar)
+                    {
+                        // Set drag regions - the entire title bar area should be draggable
+                        // The system will handle the drag regions automatically for the custom title bar
+                        mainWindow.SetTitleBar(TitleBarDragRegion);
+                        
+                        System.Diagnostics.Debug.WriteLine("✓ Custom title bar drag region configured");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"⚠️ Failed to configure custom title bar: {ex.Message}");
+                // Continue without custom title bar functionality if configuration fails
+            }
         }
     }
 }

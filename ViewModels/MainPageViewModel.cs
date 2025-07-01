@@ -2,13 +2,13 @@ using System;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Input;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using YAWDA.Models;
 using YAWDA.Services;
-using System.Threading;
 
 namespace YAWDA.ViewModels
 {
@@ -22,10 +22,13 @@ namespace YAWDA.ViewModels
         private readonly INotificationService _notificationService;
 
         [ObservableProperty]
+        private string _nextReminderText = "Initializing...";
+
+        [ObservableProperty]
         private int _todaysTotalIntake = 0;
 
         [ObservableProperty]
-        private int _dailyGoal = 2310;
+        private int _dailyGoal = 2310; // Default based on 70kg person
 
         [ObservableProperty]
         private double _progressPercentage = 0.0;
@@ -40,16 +43,13 @@ namespace YAWDA.ViewModels
         private bool _goalAchieved = false;
 
         [ObservableProperty]
-        private string _nextReminderText = "Next reminder in: --";
+        private UserSettings _userSettings = UserSettings.CreateDefault();
 
         [ObservableProperty]
         private DailyStats? _todaysStats;
 
         [ObservableProperty]
         private ObservableCollection<WaterIntakeRecord> _todaysIntakeHistory = new();
-
-        [ObservableProperty]
-        private UserSettings _userSettings = UserSettings.CreateDefault();
 
         [ObservableProperty]
         private bool _isLoading = true;
@@ -65,30 +65,52 @@ namespace YAWDA.ViewModels
 
             // Set initial values immediately to show UI fast
             IsLoading = false; // Start with loading false
-            NextReminderText = "Loading...";
+            NextReminderText = "Initializing...";
             ProgressText = "0ml / 2310ml";
             RemainingText = "2310ml remaining";
             UpdateProgressDisplay(); // Show default progress
 
-            // Try to load data with very short timeout - if it fails, just show defaults
-            _ = Task.Run(async () => 
+            // Start a background task to wait for services to be ready and then load data
+            _ = Task.Run(async () => await WaitForServicesAndLoadDataAsync());
+
+            System.Diagnostics.Debug.WriteLine("MainPageViewModel constructor completed - waiting for service initialization");
+        }
+
+        /// <summary>
+        /// Waits for DataService to be ready, then loads initial data
+        /// </summary>
+        private async Task WaitForServicesAndLoadDataAsync()
+        {
+            try
             {
-                try
+                // Wait up to 30 seconds for DataService to be initialized
+                var timeout = TimeSpan.FromSeconds(30);
+                var checkInterval = TimeSpan.FromMilliseconds(500); // Check every 500ms
+                var endTime = DateTime.Now + timeout;
+
+                while (DateTime.Now < endTime)
                 {
-                    using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2)); // Very short timeout
-                    await InitializeAsync(cts.Token);
+                    if (_dataService.IsInitialized)
+                    {
+                        System.Diagnostics.Debug.WriteLine("DataService is ready - loading initial data");
+                        
+                        // Load data on the current thread (should be safe now that service is ready)
+                        await RefreshDataAsync();
+                        return;
+                    }
+
+                    await Task.Delay(checkInterval);
                 }
-                catch (OperationCanceledException)
-                {
-                    System.Diagnostics.Debug.WriteLine("MainPageViewModel initialization timed out - using defaults");
-                    NextReminderText = "Using default values";
-                }
-                catch (Exception ex)
-                {
-                    System.Diagnostics.Debug.WriteLine($"MainPageViewModel initialization error: {ex.Message}");
-                    NextReminderText = "Data unavailable - showing defaults";
-                }
-            });
+
+                // Timeout reached
+                System.Diagnostics.Debug.WriteLine("DataService initialization timeout - continuing with defaults");
+                NextReminderText = "Service initialization timeout - using defaults";
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error waiting for services: {ex.Message}");
+                NextReminderText = "Service initialization error - using defaults";
+            }
         }
 
         [RelayCommand]
@@ -138,7 +160,7 @@ namespace YAWDA.ViewModels
                 IsLoading = true;
 
                 // Quick check - if service isn't immediately ready, use defaults
-                if (!await IsDataServiceReadyAsync())
+                if (!IsDataServiceReady())
                 {
                     System.Diagnostics.Debug.WriteLine("DataService not ready immediately - using defaults");
                     NextReminderText = "Using default values";
@@ -149,29 +171,70 @@ namespace YAWDA.ViewModels
                 // If service is ready, try to load data quickly
                 cancellationToken.ThrowIfCancellationRequested();
 
-                // Load data with individual timeouts
-                TodaysTotalIntake = await _dataService.GetTodaysTotalIntakeAsync();
-                var todaysRecords = await _dataService.GetDailyIntakeAsync(DateTime.Today);
-                
-                // Update history
-                TodaysIntakeHistory.Clear();
-                foreach (var record in todaysRecords.OrderByDescending(r => r.Timestamp))
+                // Load data with individual error handling
+                try
                 {
-                    TodaysIntakeHistory.Add(record);
+                    TodaysTotalIntake = await _dataService.GetTodaysTotalIntakeAsync();
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"Error loading total intake: {ex.Message}");
+                    TodaysTotalIntake = 0; // Use default
                 }
 
-                // Load user settings
-                UserSettings = await _dataService.LoadSettingsAsync();
-                DailyGoal = UserSettings.EffectiveDailyGoalMilliliters;
+                try
+                {
+                    var todaysRecords = await _dataService.GetDailyIntakeAsync(DateTime.Today);
+                    
+                    // Update history safely
+                    TodaysIntakeHistory.Clear();
+                    foreach (var record in todaysRecords.OrderByDescending(r => r.Timestamp))
+                    {
+                        TodaysIntakeHistory.Add(record);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"Error loading intake history: {ex.Message}");
+                    TodaysIntakeHistory.Clear(); // Use empty list
+                }
+
+                try
+                {
+                    // Load user settings
+                    UserSettings = await _dataService.LoadSettingsAsync();
+                    DailyGoal = UserSettings.EffectiveDailyGoalMilliliters;
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"Error loading user settings: {ex.Message}");
+                    // Keep existing settings
+                }
 
                 // Update progress calculations
                 UpdateProgressDisplay();
 
-                // Load today's stats
-                TodaysStats = await _dataService.GetDailyStatsAsync(DateTime.Today);
+                try
+                {
+                    // Load today's stats
+                    TodaysStats = await _dataService.GetDailyStatsAsync(DateTime.Today);
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"Error loading daily stats: {ex.Message}");
+                    TodaysStats = null; // Use null
+                }
 
-                // Update next reminder info (don't await to avoid blocking)
-                _ = Task.Run(async () => await UpdateNextReminderInfoAsync());
+                try
+                {
+                    // Update next reminder info on UI thread
+                    await UpdateNextReminderInfoAsync();
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"Error updating reminder info: {ex.Message}");
+                    NextReminderText = "Reminder info unavailable";
+                }
 
                 NextReminderText = "Data loaded successfully";
             }
@@ -196,20 +259,16 @@ namespace YAWDA.ViewModels
         /// <summary>
         /// Checks if the DataService is ready for operations
         /// </summary>
-        private async Task<bool> IsDataServiceReadyAsync()
+        private bool IsDataServiceReady()
         {
             try
             {
-                // Try a simple operation to test if DataService is ready
-                await _dataService.GetTodaysTotalIntakeAsync();
-                return true;
+                // Use the new IsInitialized property for a safe, fast check
+                return _dataService.IsInitialized;
             }
-            catch (InvalidOperationException ex) when (ex.Message.Contains("Database not initialized"))
+            catch (Exception ex)
             {
-                return false;
-            }
-            catch (Exception)
-            {
+                System.Diagnostics.Debug.WriteLine($"DataService readiness check failed: {ex.Message}");
                 return false;
             }
         }
@@ -235,11 +294,16 @@ namespace YAWDA.ViewModels
                 }
 
                 await _reminderService.PauseAsync(TimeSpan.FromMinutes(minutes));
+                
+                // Update reminder info on UI thread
                 await UpdateNextReminderInfoAsync();
             }
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"Error pausing reminders: {ex.Message}");
+                
+                // Safely update UI on error
+                NextReminderText = "Error pausing reminders";
             }
         }
 
@@ -298,8 +362,16 @@ namespace YAWDA.ViewModels
 
         private async void OnReminderTriggered(object? sender, ReminderEventArgs e)
         {
-            // Refresh data when reminders are triggered to update UI
-            await RefreshDataAsync();
+            try
+            {
+                // Refresh data when reminders are triggered to update UI
+                // Note: This event handler should already be called on the UI thread by the ReminderService
+                await RefreshDataAsync();
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error in OnReminderTriggered: {ex.Message}");
+            }
         }
 
         // Quick intake amounts

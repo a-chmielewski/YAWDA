@@ -13,19 +13,48 @@
 
 
     <ScrollViewer>
-        <Grid Margin="20" MaxWidth="800">
+        <Grid Margin="30" MaxWidth="840" HorizontalAlignment="Center">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
-                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
 
+            <!-- Custom Title Bar -->
+            <Grid Grid.Row="0" Height="40" Margin="-30,0,-30,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                
+                <!-- Title Area -->
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="30,0,0,0">
+                    <FontIcon 
+                        Glyph="&#xE7F8;" 
+                        FontFamily="Segoe Fluent Icons" 
+                        FontSize="16" 
+                        Foreground="{StaticResource WaterBlueBrush}" 
+                        VerticalAlignment="Center" 
+                        Margin="0,0,8,0" />
+                    <TextBlock 
+                        Text="YAWDA" 
+                        FontSize="14" 
+                        FontWeight="Medium"
+                        VerticalAlignment="Center" 
+                        Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
+                </StackPanel>
+                
+                <!-- Drag Region (invisible area for window dragging) -->
+                <Border Grid.ColumnSpan="2" Background="Transparent" x:Name="TitleBarDragRegion" />
+            </Grid>
+
             <!-- Header Section -->
-            <StackPanel Grid.Row="0" Margin="0,0,0,24">
+            <StackPanel Grid.Row="1" Margin="0,16,0,24">
                 <TextBlock
-                    Text="YAWDA - Water Tracker"
+                    Text="Yet Another Water Drinking App"
                     Style="{StaticResource HeaderTextStyle}"
                     HorizontalAlignment="Center"
                     Margin="0,0,0,8" />
@@ -36,7 +65,7 @@
             </StackPanel>
 
             <!-- Daily Progress Section -->
-            <Border Grid.Row="1" Style="{StaticResource CardBorderStyle}" Margin="0,0,0,16">
+            <Border Grid.Row="2" Style="{StaticResource CardBorderStyle}" Margin="0,0,0,16">
                 <StackPanel Spacing="16">
                     <TextBlock
                         Text="Today's Progress"
@@ -83,7 +112,7 @@
             </Border>
 
             <!-- Quick Intake Section -->
-            <Border Grid.Row="2" Style="{StaticResource CardBorderStyle}" Margin="0,0,0,16">
+            <Border Grid.Row="3" Style="{StaticResource CardBorderStyle}" Margin="0,0,0,16">
                 <StackPanel Spacing="16">
                     <TextBlock
                         Text="Log Water Intake"
@@ -165,7 +194,7 @@
             </Border>
 
             <!-- Navigation Section -->
-            <StackPanel Grid.Row="3" Orientation="Horizontal" Spacing="16" HorizontalAlignment="Center" Margin="0,0,0,16">
+            <StackPanel Grid.Row="4" Orientation="Horizontal" Spacing="16" HorizontalAlignment="Center" Margin="0,0,0,16">
                 <Button
                     Content="⚙️ Settings"
                     Style="{StaticResource SecondaryButtonStyle}"
@@ -181,7 +210,7 @@
             </StackPanel>
 
             <!-- Today's Intake History -->
-            <Border Grid.Row="4" Style="{StaticResource CardBorderStyle}">
+            <Border Grid.Row="5" Style="{StaticResource CardBorderStyle}">
                 <StackPanel Spacing="16">
                     <TextBlock
                         Text="Today's Intake History"
@@ -254,7 +283,7 @@
 
             <!-- Loading Overlay -->
             <Border
-                Grid.RowSpan="5"
+                Grid.RowSpan="6"
                 Background="{ThemeResource AcrylicBackgroundFillColorDefaultBrush}"
                 Visibility="{x:Bind ViewModel.IsLoading, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
                 <StackPanel
