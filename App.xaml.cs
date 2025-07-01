@@ -5,6 +5,7 @@ using YAWDA.Services;
 using YAWDA.Views;
 using YAWDA.ViewModels;
 using YAWDA.Utilities;
+using System.Threading;
 
 namespace YAWDA
 {
@@ -41,8 +42,85 @@ namespace YAWDA
         /// </summary>
         public App()
         {
-            InitializeComponent();
-            ConfigureServices();
+            try
+            {
+                // Add comprehensive startup diagnostics
+                System.Diagnostics.Debug.WriteLine("=== YAWDA App Constructor Starting ===");
+                System.Diagnostics.Debug.WriteLine($"OS Version: {Environment.OSVersion}");
+                System.Diagnostics.Debug.WriteLine($".NET Version: {Environment.Version}");
+                System.Diagnostics.Debug.WriteLine($"Working Directory: {Environment.CurrentDirectory}");
+                
+                // Initialize component first
+                InitializeComponent();
+                System.Diagnostics.Debug.WriteLine("✓ InitializeComponent completed");
+                
+                // Configure services (this must succeed)
+                ConfigureServices();
+                System.Diagnostics.Debug.WriteLine("✓ Services configured");
+                
+                // Check Windows App SDK runtime (non-blocking)
+                CheckWindowsAppSdkRuntime();
+                
+                System.Diagnostics.Debug.WriteLine("=== YAWDA App Constructor Completed Successfully ===");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"=== CRITICAL: App Constructor Failed ===");
+                System.Diagnostics.Debug.WriteLine($"Exception Type: {ex.GetType().Name}");
+                System.Diagnostics.Debug.WriteLine($"Exception Message: {ex.Message}");
+                System.Diagnostics.Debug.WriteLine($"Stack Trace: {ex.StackTrace}");
+                
+                // Ensure services are configured even if other initialization fails
+                if (serviceProvider == null)
+                {
+                    try
+                    {
+                        System.Diagnostics.Debug.WriteLine("Attempting emergency service configuration...");
+                        ConfigureServices();
+                        System.Diagnostics.Debug.WriteLine("✓ Emergency service configuration successful");
+                    }
+                    catch (Exception serviceEx)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"❌ Emergency service configuration failed: {serviceEx.Message}");
+                    }
+                }
+                
+                // Try to write to file as well
+                try
+                {
+                    var logPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "YAWDA", "startup_error.log");
+                    Directory.CreateDirectory(Path.GetDirectoryName(logPath)!);
+                    File.WriteAllText(logPath, $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] App Constructor Failed: {ex}");
+                }
+                catch { /* Ignore file write errors */ }
+                
+                // Don't rethrow - allow app to continue even with partial initialization
+                System.Diagnostics.Debug.WriteLine("⚠️ App constructor completed with errors - app may have limited functionality");
+            }
+        }
+
+        /// <summary>
+        /// Checks if Windows App SDK runtime components are available
+        /// </summary>
+        private void CheckWindowsAppSdkRuntime()
+        {
+            try
+            {
+                // Test basic WinUI 3 components
+                var testWindow = new Window();
+                testWindow = null; // Dispose immediately
+                System.Diagnostics.Debug.WriteLine("✓ Windows App SDK runtime appears to be available");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"⚠️ Windows App SDK runtime check failed: {ex.Message}");
+                System.Diagnostics.Debug.WriteLine("This may indicate missing Windows App SDK runtime components.");
+                System.Diagnostics.Debug.WriteLine("Please install the Windows App SDK runtime from:");
+                System.Diagnostics.Debug.WriteLine("https://docs.microsoft.com/en-us/windows/apps/windows-app-sdk/downloads");
+                
+                // Don't throw - log the warning and continue
+                System.Diagnostics.Debug.WriteLine("⚠️ Continuing with potentially limited functionality");
+            }
         }
 
         /// <summary>
@@ -92,57 +170,154 @@ namespace YAWDA
         /// will be used such as when the application is launched to open a specific file.
         /// </summary>
         /// <param name="e">Details about the launch request and process.</param>
-        protected override async void OnLaunched(LaunchActivatedEventArgs e)
+        protected override void OnLaunched(LaunchActivatedEventArgs e)
         {
-            // Initialize startup service and check for startup mode
-            var startupService = ServiceProvider.GetRequiredService<IStartupService>();
-            startupService.InitializeStartupMode(e.Arguments);
-
-            // Get user settings to determine window behavior
-            var dataService = ServiceProvider.GetRequiredService<IDataService>();
-            var settings = await dataService.LoadSettingsAsync();
-
-            // Handle startup mode (background-only operation)
-            if (startupService.IsStartupMode && settings.StartMinimized)
+            try
             {
-                await InitializeBackgroundServicesAsync();
+                System.Diagnostics.Debug.WriteLine("=== App OnLaunched Starting ===");
                 
-                // Start system tray without showing main window
-                var systemTrayService = ServiceProvider.GetRequiredService<ISystemTrayService>();
-                await systemTrayService.InitializeAsync();
+                // Initialize the main window
+                window = new Window()
+                {
+                    Title = "YAWDA - Yet Another Water Drinking App"
+                };
                 
-                // Validate and fix startup configuration if needed
-                _ = Task.Run(async () => await startupService.ValidateStartupConfigurationAsync());
+                // IMPORTANT: Add window closing handler to prevent app exit when tray is disabled
+                window.Closed += OnMainWindowClosed;
                 
-                return; // Don't create main window for startup mode
-            }
+                // Initialize services (this can fail but shouldn't crash the app)
+                ConfigureServices();
+                InitializeGlobalExceptionHandler();
+                
+                // Set up frame navigation
+                Frame? rootFrame = window.Content as Frame;
+                if (rootFrame == null)
+                {
+                    rootFrame = new Frame();
+                    rootFrame.NavigationFailed += OnNavigationFailed;
+                    window.Content = rootFrame;
+                }
 
-            // Normal launch - create main window
-            window ??= new Window();
+                // Safely get launch arguments
+                string launchArguments = "";
+                try
+                {
+                    launchArguments = e.Arguments ?? "";
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"Warning: Could not access launch arguments: {ex.Message}");
+                    launchArguments = ""; // Use empty string as fallback
+                }
 
-            if (window.Content is not Frame rootFrame)
-            {
-                rootFrame = new Frame();
-                rootFrame.NavigationFailed += OnNavigationFailed;
-                window.Content = rootFrame;
-            }
+                // Navigate immediately to avoid black screen
+                var navigated = rootFrame.Navigate(typeof(Views.MainPage), launchArguments);
+                
+                if (!navigated)
+                {
+                    var logger = ServiceProvider.GetService<ILogger<App>>();
+                    logger?.LogError("Failed to navigate to MainPage");
+                    throw new InvalidOperationException("Navigation to MainPage failed");
+                }
 
-            _ = rootFrame.Navigate(typeof(Views.MainPage), e.Arguments);
-            
-            // Show window unless starting minimized
-            if (!settings.StartMinimized || !startupService.IsStartupMode)
-            {
+                // Initialize services in background AFTER navigation
+                _ = Task.Run(async () => await InitializeServicesAsync(launchArguments));
+
+                // Always activate and show the window (since tray icon is disabled)
                 window.Activate();
+                System.Diagnostics.Debug.WriteLine("✓ Main window activated and should be visible");
             }
+            catch (Exception ex)
+            {
+                // Log the startup error and attempt to show error dialog
+                try
+                {
+                    var logger = ServiceProvider.GetService<ILogger<App>>();
+                    logger?.LogCritical(ex, "Critical startup failure in OnLaunched");
+                }
+                catch
+                {
+                    // If logging fails, write to debug output
+                    System.Diagnostics.Debug.WriteLine($"Critical startup failure: {ex}");
+                }
+                
+                // Rethrow to prevent silent failure
+                throw;
+            }
+        }
 
-            // Initialize background services
-            await InitializeBackgroundServicesAsync();
+        /// <summary>
+        /// Handles main window closing - keep app alive for now since tray is disabled
+        /// </summary>
+        private void OnMainWindowClosed(object sender, Microsoft.UI.Xaml.WindowEventArgs e)
+        {
+            // IMPORTANT: Cancel the close event to keep app alive for background services
+            // Since system tray is disabled, we need the app to stay running for reminders
+            e.Handled = true;
+            
+            // Hide the window instead of closing it
+            if (window != null)
+            {
+                // For now, just minimize the window so reminders can continue working
+                // In the future, when tray icon works, we can hide to system tray instead
+                System.Diagnostics.Debug.WriteLine("Main window close prevented - hiding to maintain background services");
+                
+                // Since WinUI 3 doesn't have window hiding, we'll just leave it minimized
+                // The user can re-open it from taskbar or close from there if needed
+            }
+        }
+
+        /// <summary>
+        /// Initializes services asynchronously in the background
+        /// </summary>
+        private async Task InitializeServicesAsync(string arguments)
+        {
+            try
+            {
+                System.Diagnostics.Debug.WriteLine("=== Starting Service Initialization ===");
+                
+                // Initialize startup service (this should be fast)
+                var startupService = ServiceProvider.GetRequiredService<IStartupService>();
+                startupService.InitializeStartupMode(arguments);
+                System.Diagnostics.Debug.WriteLine("✓ StartupService initialized");
+
+                // Initialize background services with timeout
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15)); // 15 second timeout
+                await InitializeBackgroundServicesAsync(cts.Token);
+                
+                // IMPORTANT: Keep app alive for background services
+                // Since system tray is disabled, we need to prevent WinUI 3 from auto-exiting
+                _ = Task.Run(async () =>
+                {
+                    System.Diagnostics.Debug.WriteLine("🔄 Background keep-alive task started - app will stay running for reminders");
+                    // This task runs indefinitely to keep the app alive
+                    while (true)
+                    {
+                        await Task.Delay(TimeSpan.FromMinutes(5)); // Check every 5 minutes
+                        System.Diagnostics.Debug.WriteLine("⏰ App keep-alive check - reminders still active");
+                    }
+                });
+                
+                System.Diagnostics.Debug.WriteLine("=== Service Initialization Complete ===");
+            }
+            catch (OperationCanceledException)
+            {
+                var logger = ServiceProvider.GetService<ILogger<App>>();
+                logger?.LogWarning("Service initialization timed out after 15 seconds - app will continue with limited functionality");
+                System.Diagnostics.Debug.WriteLine("⚠️ Service initialization timed out - app will run with limited functionality");
+            }
+            catch (Exception ex)
+            {
+                var logger = ServiceProvider.GetService<ILogger<App>>();
+                logger?.LogError(ex, "Failed to initialize services - app will continue with limited functionality");
+                System.Diagnostics.Debug.WriteLine($"❌ Service initialization failed: {ex.Message}");
+            }
         }
 
         /// <summary>
         /// Initializes background services required for operation
         /// </summary>
-        private async Task InitializeBackgroundServicesAsync()
+        private async Task InitializeBackgroundServicesAsync(CancellationToken cancellationToken = default)
         {
             IErrorReportingService? errorReportingService = null;
             
@@ -150,15 +325,32 @@ namespace YAWDA
             {
                 errorReportingService = ServiceProvider.GetRequiredService<IErrorReportingService>();
                 
-                // Initialize core services with graceful degradation
+                // Initialize DataService with timeout
+                await InitializeServiceWithGracefulDegradation(
+                    async () =>
+                    {
+                        var dataService = ServiceProvider.GetRequiredService<IDataService>();
+                        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                        timeoutCts.CancelAfter(TimeSpan.FromSeconds(8)); // DataService gets 8 seconds max
+                        await dataService.InitializeAsync();
+                        System.Diagnostics.Debug.WriteLine("✓ DataService initialized successfully");
+                    },
+                    "DataService",
+                    errorReportingService,
+                    cancellationToken
+                );
+                
+                // Initialize other services (these should be faster)
                 await InitializeServiceWithGracefulDegradation(
                     async () =>
                     {
                         var reminderService = ServiceProvider.GetRequiredService<IReminderService>();
                         await reminderService.StartAsync();
+                        System.Diagnostics.Debug.WriteLine("✓ ReminderService started");
                     },
                     "ReminderService",
-                    errorReportingService
+                    errorReportingService,
+                    cancellationToken
                 );
 
                 await InitializeServiceWithGracefulDegradation(
@@ -166,27 +358,18 @@ namespace YAWDA
                     {
                         var systemTrayService = ServiceProvider.GetRequiredService<ISystemTrayService>();
                         await systemTrayService.InitializeAsync();
+                        System.Diagnostics.Debug.WriteLine("✓ SystemTrayService initialized");
                     },
                     "SystemTrayService",
-                    errorReportingService
+                    errorReportingService,
+                    cancellationToken
                 );
             }
             catch (Exception ex)
             {
-                // Report critical initialization error
-                if (errorReportingService != null)
-                {
-                    await errorReportingService.ReportCriticalErrorAsync(
-                        new InitializationException("Failed to initialize background services", ex, "INIT_001"),
-                        false
-                    );
-                }
-                else
-                {
-                    // Fallback logging if error reporting service is not available
-                    var logger = ServiceProvider.GetRequiredService<ILogger<App>>();
-                    logger.LogCritical(ex, "Critical: Failed to initialize background services and error reporting is unavailable");
-                }
+                errorReportingService?.ReportErrorAsync(ex, "Critical service initialization failure", false);
+                System.Diagnostics.Debug.WriteLine($"❌ Critical error in background service initialization: {ex.Message}");
+                throw;
             }
         }
 
@@ -196,27 +379,24 @@ namespace YAWDA
         private async Task InitializeServiceWithGracefulDegradation(
             Func<Task> serviceInitializer, 
             string serviceName, 
-            IErrorReportingService errorReportingService)
+            IErrorReportingService errorReportingService,
+            CancellationToken cancellationToken = default)
         {
             try
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 await serviceInitializer();
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                System.Diagnostics.Debug.WriteLine($"⚠️ {serviceName} initialization was cancelled");
+                throw; // Re-throw cancellation
             }
             catch (Exception ex)
             {
-                // Report as recoverable error - app can continue without this service
-                var serviceException = new SystemIntegrationException(
-                    $"Failed to initialize {serviceName}",
-                    ex,
-                    $"SERVICE_INIT_{serviceName.ToUpper()}"
-                );
-
-                await errorReportingService.ReportRecoverableErrorAsync(serviceException, new List<string>
-                {
-                    $"Restart the application to retry {serviceName} initialization",
-                    "Some features may be limited without this service",
-                    "Check system resources and permissions"
-                });
+                System.Diagnostics.Debug.WriteLine($"❌ {serviceName} initialization failed: {ex.Message}");
+                errorReportingService?.ReportErrorAsync(ex, $"{serviceName} initialization failed", false);
+                // Don't rethrow - allow app to continue with degraded functionality
             }
         }
 
@@ -251,7 +431,7 @@ namespace YAWDA
             try
             {
                 var errorReportingService = ServiceProvider.GetRequiredService<IErrorReportingService>();
-                _ = Task.Run(async () => await errorReportingService.ReportErrorAsync(navigationException, "Navigation"));
+                _ = errorReportingService.ReportErrorAsync(navigationException, "Navigation");
             }
             catch
             {

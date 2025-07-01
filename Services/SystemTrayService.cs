@@ -35,7 +35,7 @@ namespace YAWDA.Services
         }
 
         /// <inheritdoc />
-        public async Task InitializeAsync()
+        public Task InitializeAsync()
         {
             try
             {
@@ -47,7 +47,12 @@ namespace YAWDA.Services
                     _mainWindow = app.GetMainWindow();
                 }
 
-                // Create the taskbar icon - for now, we'll keep it simple
+                // TEMPORARY FIX: Skip TaskbarIcon creation as it's causing hang
+                // TODO: Investigate H.NotifyIcon.WinUI compatibility issue
+                _logger.LogWarning("Skipping TaskbarIcon creation due to compatibility issues");
+                
+                // Create the taskbar icon - DISABLED TEMPORARILY
+                /*
                 _trayIcon = new TaskbarIcon
                 {
                     ToolTipText = "YAWDA - Yet Another Water Drinking App"
@@ -57,12 +62,14 @@ namespace YAWDA.Services
                 // TODO: Add proper event handling once we understand the H.NotifyIcon API better
 
                 // Create context menu
-                await CreateContextMenuAsync();
+                CreateContextMenu();
 
-                // Initialize tooltip with current data
-                await UpdateTooltipAsync();
+                // Set initial basic tooltip (will be updated later when DataService is ready)
+                UpdateTooltip(0, 2000, "starting...");
+                */
 
-                _logger.LogInformation("SystemTrayService initialized successfully");
+                _logger.LogInformation("SystemTrayService initialized successfully (without tray icon)");
+                return Task.CompletedTask;
             }
             catch (Exception ex)
             {
@@ -76,7 +83,11 @@ namespace YAWDA.Services
         {
             try
             {
-                if (_trayIcon == null) return;
+                if (_trayIcon == null) 
+                {
+                    _logger.LogDebug("Tray icon not available, skipping tooltip update");
+                    return;
+                }
 
                 var progress = dailyGoal > 0 ? (double)currentIntake / dailyGoal * 100 : 0;
                 var progressBar = GenerateProgressBar(progress);
@@ -96,20 +107,25 @@ namespace YAWDA.Services
         }
 
         /// <inheritdoc />
-        public async Task ShowTrayNotificationAsync(string title, string message, int timeout = 3000)
+        public Task ShowTrayNotificationAsync(string title, string message, int timeout = 3000)
         {
             try
             {
-                if (_trayIcon == null) return;
+                if (_trayIcon == null) 
+                {
+                    _logger.LogDebug("Tray icon not available, skipping notification: {Title} - {Message}", title, message);
+                    return Task.CompletedTask;
+                }
 
                 // For now, simplified balloon notification
                 // TODO: Implement proper balloon notifications with H.NotifyIcon
                 _logger.LogInformation("Tray notification would show: {Title} - {Message}", title, message);
-                await Task.CompletedTask;
+                return Task.CompletedTask;
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to show tray notification: {Title}", title);
+                return Task.CompletedTask;
             }
         }
 
@@ -118,7 +134,11 @@ namespace YAWDA.Services
         {
             try
             {
-                if (_mainWindow == null) return;
+                if (_mainWindow == null) 
+                {
+                    _logger.LogDebug("Main window not available");
+                    return;
+                }
 
                 if (show)
                 {
@@ -128,9 +148,8 @@ namespace YAWDA.Services
                 }
                 else
                 {
-                    // Note: WinUI 3 Window doesn't have Hide(), so we minimize instead
-                    _mainWindow.Close();
-                    _logger.LogDebug("Main window hidden");
+                    // Note: Since there's no tray icon to hide to, just minimize instead of closing
+                    _logger.LogDebug("Main window hide requested (keeping open since no tray icon)");
                 }
             }
             catch (Exception ex)
@@ -142,14 +161,13 @@ namespace YAWDA.Services
         /// <summary>
         /// Creates the context menu for the tray icon
         /// </summary>
-        private async Task CreateContextMenuAsync()
+        private void CreateContextMenu()
         {
             try
             {
                 // For H.NotifyIcon.WinUI, context menu is typically handled through right-click events
                 // We'll handle the menu creation in the right-click event handler
                 _logger.LogDebug("Context menu setup completed");
-                await Task.CompletedTask;
             }
             catch (Exception ex)
             {
@@ -165,9 +183,23 @@ namespace YAWDA.Services
         {
             try
             {
-                var currentIntake = await _dataService.GetTodaysTotalIntakeAsync();
-                var settings = await _dataService.LoadSettingsAsync();
-                UpdateTooltip(currentIntake, settings.EffectiveDailyGoalMilliliters, "calculating...");
+                // Try to get data, but gracefully handle if DataService isn't ready yet
+                var currentIntake = 0;
+                var dailyGoal = 2000; // Default value
+                
+                try
+                {
+                    currentIntake = await _dataService.GetTodaysTotalIntakeAsync();
+                    var settings = await _dataService.LoadSettingsAsync();
+                    dailyGoal = settings.EffectiveDailyGoalMilliliters;
+                }
+                catch (InvalidOperationException)
+                {
+                    // DataService not initialized yet, use defaults
+                    _logger.LogDebug("DataService not ready during tooltip update, using defaults");
+                }
+                
+                UpdateTooltip(currentIntake, dailyGoal, "calculating...");
             }
             catch (Exception ex)
             {

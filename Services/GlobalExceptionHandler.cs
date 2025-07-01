@@ -47,8 +47,16 @@ namespace YAWDA.Services
                 // Handle unhandled exceptions in tasks
                 TaskScheduler.UnobservedTaskException += OnUnobservedTaskException;
 
-                // Note: WinUI dispatcher exception handling is covered by AppDomain and TaskScheduler handlers
-                _logger.LogInformation("Global exception handlers attached for AppDomain and TaskScheduler");
+                // NEW: capture WinUI 3 dispatcher (UI thread) exceptions
+                // These exceptions previously terminated the process before reaching the other handlers.
+                // By attaching here we can route them through the same reporting pipeline and keep the app alive.
+                if (Microsoft.UI.Xaml.Application.Current is not null)
+                {
+                    Microsoft.UI.Xaml.Application.Current.UnhandledException += OnAppUnhandledException;
+                }
+
+                // Note: WinUI dispatcher exception handling is now explicitly covered above
+                _logger.LogInformation("Global exception handlers attached for AppDomain, TaskScheduler and UI thread");
 
                 _isInitialized = true;
                 _logger.LogInformation("Global exception handler initialized successfully");
@@ -120,6 +128,13 @@ namespace YAWDA.Services
 
         #region Private Event Handlers
 
+        private async void OnAppUnhandledException(object sender, Microsoft.UI.Xaml.UnhandledExceptionEventArgs e)
+        {
+            // Mark as handled so the application does not crash automatically
+            e.Handled = true;
+            await HandleUnhandledExceptionAsync(e.Exception, "Application.UnhandledException");
+        }
+
         private async void OnUnhandledException(object sender, System.UnhandledExceptionEventArgs e)
         {
             if (e.ExceptionObject is Exception exception)
@@ -138,8 +153,6 @@ namespace YAWDA.Services
                 await HandleUnhandledExceptionAsync(exception, "TaskScheduler.UnobservedTaskException");
             }
         }
-
-
 
         #endregion
 

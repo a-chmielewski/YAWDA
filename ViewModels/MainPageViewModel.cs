@@ -8,6 +8,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using YAWDA.Models;
 using YAWDA.Services;
+using System.Threading;
 
 namespace YAWDA.ViewModels
 {
@@ -62,15 +63,54 @@ namespace YAWDA.ViewModels
             // Subscribe to reminder service events
             _reminderService.ReminderTriggered += OnReminderTriggered;
 
-            // Initialize async
-            Task.Run(InitializeAsync);
+            // Set initial values immediately to show UI fast
+            IsLoading = false; // Start with loading false
+            NextReminderText = "Loading...";
+            ProgressText = "0ml / 2310ml";
+            RemainingText = "2310ml remaining";
+            UpdateProgressDisplay(); // Show default progress
+
+            // Try to load data with very short timeout - if it fails, just show defaults
+            _ = Task.Run(async () => 
+            {
+                try
+                {
+                    using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2)); // Very short timeout
+                    await InitializeAsync(cts.Token);
+                }
+                catch (OperationCanceledException)
+                {
+                    System.Diagnostics.Debug.WriteLine("MainPageViewModel initialization timed out - using defaults");
+                    NextReminderText = "Using default values";
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"MainPageViewModel initialization error: {ex.Message}");
+                    NextReminderText = "Data unavailable - showing defaults";
+                }
+            });
         }
 
         [RelayCommand]
-        private async Task LogWaterIntakeAsync(int amount)
+        private async Task LogWaterIntakeAsync(object parameter)
         {
             try
             {
+                int amount;
+                if (parameter is int intValue)
+                {
+                    amount = intValue;
+                }
+                else if (parameter is string strValue && int.TryParse(strValue, out int parsedValue))
+                {
+                    amount = parsedValue;
+                }
+                else
+                {
+                    System.Diagnostics.Debug.WriteLine($"Invalid water intake amount parameter: {parameter}");
+                    return;
+                }
+
                 await _dataService.LogWaterIntakeAsync(amount, "manual");
                 await _reminderService.RecordWaterIntakeAsync(amount);
                 await RefreshDataAsync();
@@ -88,11 +128,28 @@ namespace YAWDA.ViewModels
         [RelayCommand]
         private async Task RefreshDataAsync()
         {
+            await RefreshDataAsync(CancellationToken.None);
+        }
+
+        private async Task RefreshDataAsync(CancellationToken cancellationToken)
+        {
             try
             {
                 IsLoading = true;
 
-                // Load today's data
+                // Quick check - if service isn't immediately ready, use defaults
+                if (!await IsDataServiceReadyAsync())
+                {
+                    System.Diagnostics.Debug.WriteLine("DataService not ready immediately - using defaults");
+                    NextReminderText = "Using default values";
+                    UpdateProgressDisplay();
+                    return;
+                }
+
+                // If service is ready, try to load data quickly
+                cancellationToken.ThrowIfCancellationRequested();
+
+                // Load data with individual timeouts
                 TodaysTotalIntake = await _dataService.GetTodaysTotalIntakeAsync();
                 var todaysRecords = await _dataService.GetDailyIntakeAsync(DateTime.Today);
                 
@@ -113,11 +170,21 @@ namespace YAWDA.ViewModels
                 // Load today's stats
                 TodaysStats = await _dataService.GetDailyStatsAsync(DateTime.Today);
 
-                // Update next reminder info
-                await UpdateNextReminderInfoAsync();
+                // Update next reminder info (don't await to avoid blocking)
+                _ = Task.Run(async () => await UpdateNextReminderInfoAsync());
+
+                NextReminderText = "Data loaded successfully";
+            }
+            catch (OperationCanceledException)
+            {
+                NextReminderText = "Load timeout - using defaults";
+                UpdateProgressDisplay(); // Show defaults
+                System.Diagnostics.Debug.WriteLine("Data refresh was cancelled");
             }
             catch (Exception ex)
             {
+                NextReminderText = "Load error - using defaults";
+                UpdateProgressDisplay(); // Show defaults
                 System.Diagnostics.Debug.WriteLine($"Error refreshing data: {ex.Message}");
             }
             finally
@@ -126,11 +193,47 @@ namespace YAWDA.ViewModels
             }
         }
 
-        [RelayCommand]
-        private async Task PauseRemindersAsync(int minutes)
+        /// <summary>
+        /// Checks if the DataService is ready for operations
+        /// </summary>
+        private async Task<bool> IsDataServiceReadyAsync()
         {
             try
             {
+                // Try a simple operation to test if DataService is ready
+                await _dataService.GetTodaysTotalIntakeAsync();
+                return true;
+            }
+            catch (InvalidOperationException ex) when (ex.Message.Contains("Database not initialized"))
+            {
+                return false;
+            }
+            catch (Exception)
+            {
+                return false;
+            }
+        }
+
+        [RelayCommand]
+        private async Task PauseRemindersAsync(object parameter)
+        {
+            try
+            {
+                int minutes;
+                if (parameter is int intValue)
+                {
+                    minutes = intValue;
+                }
+                else if (parameter is string strValue && int.TryParse(strValue, out int parsedValue))
+                {
+                    minutes = parsedValue;
+                }
+                else
+                {
+                    System.Diagnostics.Debug.WriteLine($"Invalid pause duration parameter: {parameter}");
+                    return;
+                }
+
                 await _reminderService.PauseAsync(TimeSpan.FromMinutes(minutes));
                 await UpdateNextReminderInfoAsync();
             }
@@ -140,9 +243,9 @@ namespace YAWDA.ViewModels
             }
         }
 
-        private async Task InitializeAsync()
+        private async Task InitializeAsync(CancellationToken cancellationToken)
         {
-            await RefreshDataAsync();
+            await RefreshDataAsync(cancellationToken);
         }
 
         private void UpdateProgressDisplay()

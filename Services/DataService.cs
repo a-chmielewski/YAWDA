@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Data;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
@@ -47,7 +48,14 @@ namespace YAWDA.Services
         {
             try
             {
-                _logger.LogInformation("Initializing database...");
+                // Check if already initialized
+                if (_connection != null && _connection.State == ConnectionState.Open)
+                {
+                    _logger.LogDebug("Database already initialized, skipping");
+                    return;
+                }
+
+                _logger.LogInformation("DataService initialized with database path: {DatabasePath}", _databasePath);
                 
                 _connection = new SqliteConnection($"Data Source={_databasePath}");
                 await _connection.OpenAsync();

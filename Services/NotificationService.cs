@@ -376,14 +376,14 @@ namespace YAWDA.Services
         /// <summary>
         /// Registers notification templates with the system
         /// </summary>
-        private async Task RegisterNotificationTemplatesAsync()
+        private Task RegisterNotificationTemplatesAsync()
         {
             try
             {
                 // Templates are defined in the notification building methods
                 // This method is reserved for future template registration if needed
                 _logger.LogDebug("Notification templates registered");
-                await Task.CompletedTask;
+                return Task.CompletedTask;
             }
             catch (Exception ex)
             {
