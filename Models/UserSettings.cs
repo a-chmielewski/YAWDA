@@ -85,6 +85,11 @@ namespace YAWDA.Models
         public bool StartMinimized { get; set; } = true;
 
         /// <summary>
+        /// Whether to minimize to tray when window is closed (true) or exit the app (false)
+        /// </summary>
+        public bool CloseToTray { get; set; } = true;
+
+        /// <summary>
         /// Number of days to keep historical data
         /// </summary>
         [Range(30, 1095, ErrorMessage = "Data retention must be between 30 and 1095 days")]

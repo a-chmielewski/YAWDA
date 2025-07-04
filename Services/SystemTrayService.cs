@@ -4,6 +4,8 @@ using Microsoft.Extensions.Logging;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Dispatching;
 using H.NotifyIcon;
+using CommunityToolkit.Mvvm.Input;
+using System.Windows.Input;
 
 namespace YAWDA.Services
 {
@@ -41,40 +43,81 @@ namespace YAWDA.Services
             try
             {
                 _logger.LogInformation("Initializing SystemTrayService...");
+                System.Diagnostics.Debug.WriteLine("🔍 SystemTrayService.InitializeAsync called");
 
                 // Get the main window and UI dispatcher from the main window
                 if (Application.Current is App app)
                 {
                     _mainWindow = app.GetMainWindow();
+                    System.Diagnostics.Debug.WriteLine($"🔍 Main window obtained: {_mainWindow != null}");
                     
-                    // Get the DispatcherQueue from the main window
+                    // Get the DispatcherQueue from the main window - H.NotifyIcon.WinUI requires UI thread
                     if (_mainWindow?.DispatcherQueue != null)
                     {
                         var dispatcherQueue = _mainWindow.DispatcherQueue;
+                        System.Diagnostics.Debug.WriteLine("🔍 DispatcherQueue obtained successfully");
                         
-                        // Create TaskbarIcon on UI thread
+                        // Create TaskbarIcon on UI thread with proper icon resource
                         var tcs = new TaskCompletionSource<bool>();
                         
                         dispatcherQueue.TryEnqueue(() =>
                         {
                             try
                             {
-                                // Create the taskbar icon on UI thread
+                                System.Diagnostics.Debug.WriteLine("🔍 Creating tray icon on UI thread with icon resource...");
+                                
+                                // Create the taskbar icon with icon resource
                                 _trayIcon = new TaskbarIcon
                                 {
-                                    ToolTipText = "YAWDA - Yet Another Water Drinking App"
+                                    ToolTipText = "YAWDA - Water Reminder App",
+                                    // Use the app's square icon for the tray
+                                    IconSource = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage(
+                                        new Uri("ms-appx:///Assets/Square44x44Logo.scale-200.png")
+                                    ),
+                                    // Make sure the icon is visible
+                                    Visibility = Microsoft.UI.Xaml.Visibility.Visible
                                 };
 
-                                // Create context menu
-                                CreateContextMenu();
+                                System.Diagnostics.Debug.WriteLine("✓ TaskbarIcon created with icon resource");
+                                
+                                // Wire up event handlers for tray icon interactions
+                                _trayIcon.LeftClickCommand = new RelayCommand(() => 
+                                {
+                                    System.Diagnostics.Debug.WriteLine("✓ Tray icon left clicked");
+                                    OnTrayIconLeftClick(null, EventArgs.Empty);
+                                });
+                                
+                                _trayIcon.RightClickCommand = new RelayCommand(() => 
+                                {
+                                    System.Diagnostics.Debug.WriteLine("✓ Tray icon right clicked");
+                                    OnTrayIconRightClick(null, EventArgs.Empty);
+                                });
+                                
+                                _trayIcon.DoubleClickCommand = new RelayCommand(() => 
+                                {
+                                    System.Diagnostics.Debug.WriteLine("✓ Tray icon double clicked");
+                                    OnTrayIconDoubleClick(null, EventArgs.Empty);
+                                });
 
-                                // Set initial basic tooltip
-                                UpdateTooltip(0, 2310, "starting...");
+                                System.Diagnostics.Debug.WriteLine("✓ Tray icon event handlers wired");
+
+                                // Create and set up context menu
+                                CreateContextMenu();
+                                System.Diagnostics.Debug.WriteLine("✓ Context menu created");
+
+                                // Set initial tooltip with current stats
+                                UpdateTooltip(0, 2300, "starting...");
+                                System.Diagnostics.Debug.WriteLine("✓ Initial tooltip set");
+                                
+                                // Make sure the icon is definitely visible in the system tray
+                                _trayIcon.ForceCreate();
+                                System.Diagnostics.Debug.WriteLine("✓ Tray icon forced to create and show");
                                 
                                 tcs.SetResult(true);
                             }
                             catch (Exception ex)
                             {
+                                System.Diagnostics.Debug.WriteLine($"❌ Error creating tray icon: {ex.Message}");
                                 tcs.SetException(ex);
                             }
                         });
@@ -83,21 +126,27 @@ namespace YAWDA.Services
                         await tcs.Task;
                         
                         _logger.LogInformation("SystemTrayService initialized successfully with tray icon");
+                        System.Diagnostics.Debug.WriteLine("✓ SystemTrayService initialization completed successfully");
                     }
                     else
                     {
                         _logger.LogWarning("Could not get DispatcherQueue from main window - tray icon will not be created");
+                        System.Diagnostics.Debug.WriteLine("❌ Could not get DispatcherQueue from main window");
                     }
                 }
                 else
                 {
                     _logger.LogWarning("Could not get main window - tray icon will not be created");
+                    System.Diagnostics.Debug.WriteLine("❌ Could not get App instance");
                 }
+                
+                System.Diagnostics.Debug.WriteLine("✓ SystemTrayService initialization completed");
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to initialize SystemTrayService");
-                throw;
+                System.Diagnostics.Debug.WriteLine($"❌ SystemTrayService initialization failed: {ex}");
+                // Don't throw - allow app to continue without tray icon
             }
         }
 
@@ -157,27 +206,42 @@ namespace YAWDA.Services
         {
             try
             {
+                System.Diagnostics.Debug.WriteLine($"SystemTrayService.SetMainWindowVisibility called: show={show}");
+                
                 if (_mainWindow == null) 
                 {
                     _logger.LogDebug("Main window not available");
+                    System.Diagnostics.Debug.WriteLine("❌ Main window reference is null");
                     return;
                 }
 
                 if (show)
                 {
                     _mainWindow.Activate();
-                    // Note: WinUI 3 Window doesn't have WindowState, so we just activate
                     _logger.LogDebug("Main window shown");
+                    System.Diagnostics.Debug.WriteLine("✓ Main window activated");
                 }
                 else
                 {
-                    // Note: Since there's no tray icon to hide to, just minimize instead of closing
-                    _logger.LogDebug("Main window hide requested (keeping open since no tray icon)");
+                    // Hide the window by setting its visibility to collapsed
+                    // In WinUI 3, we need to use the AppWindow API for proper hiding
+                    if (_mainWindow.AppWindow != null)
+                    {
+                        _mainWindow.AppWindow.Hide();
+                        _logger.LogDebug("Main window hidden to tray");
+                        System.Diagnostics.Debug.WriteLine("✓ Main window hidden using AppWindow.Hide()");
+                    }
+                    else
+                    {
+                        _logger.LogDebug("AppWindow not available - cannot hide window");
+                        System.Diagnostics.Debug.WriteLine("❌ AppWindow not available - cannot hide window");
+                    }
                 }
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to set main window visibility: {Show}", show);
+                System.Diagnostics.Debug.WriteLine($"❌ Exception in SetMainWindowVisibility: {ex.Message}");
             }
         }
 
@@ -206,37 +270,38 @@ namespace YAWDA.Services
                 var log200ml = new Microsoft.UI.Xaml.Controls.MenuFlyoutItem { Text = "200ml" };
                 log200ml.Click += (_, _) => ManualLogRequested?.Invoke(this, new ManualLogEventArgs { Amount = 200 });
 
-                var log350ml = new Microsoft.UI.Xaml.Controls.MenuFlyoutItem { Text = "350ml" };
-                log350ml.Click += (_, _) => ManualLogRequested?.Invoke(this, new ManualLogEventArgs { Amount = 350 });
+                var log300ml = new Microsoft.UI.Xaml.Controls.MenuFlyoutItem { Text = "300ml" };
+                log300ml.Click += (_, _) => ManualLogRequested?.Invoke(this, new ManualLogEventArgs { Amount = 300 });
 
                 var log500ml = new Microsoft.UI.Xaml.Controls.MenuFlyoutItem { Text = "500ml" };
                 log500ml.Click += (_, _) => ManualLogRequested?.Invoke(this, new ManualLogEventArgs { Amount = 500 });
 
-                quickLogMenu.Items.Add(log200ml);
-                quickLogMenu.Items.Add(log350ml);
-                quickLogMenu.Items.Add(log500ml);
+                var log750ml = new Microsoft.UI.Xaml.Controls.MenuFlyoutItem { Text = "750ml" };
+                log750ml.Click += (_, _) => ManualLogRequested?.Invoke(this, new ManualLogEventArgs { Amount = 750 });
 
-                // Pause Reminders submenu
+                quickLogMenu.Items.Add(log200ml);
+                quickLogMenu.Items.Add(log300ml);
+                quickLogMenu.Items.Add(log500ml);
+                quickLogMenu.Items.Add(log750ml);
+
+                // Pause reminders submenu
                 var pauseMenu = new Microsoft.UI.Xaml.Controls.MenuFlyoutSubItem
                 {
                     Text = "⏸️ Pause Reminders"
                 };
 
-                var pause15min = new Microsoft.UI.Xaml.Controls.MenuFlyoutItem { Text = "15 minutes" };
-                pause15min.Click += (_, _) => PauseReminderRequested?.Invoke(this, 
-                    new PauseReminderEventArgs { Duration = TimeSpan.FromMinutes(15), Reason = "User request - 15 min" });
-
                 var pause30min = new Microsoft.UI.Xaml.Controls.MenuFlyoutItem { Text = "30 minutes" };
-                pause30min.Click += (_, _) => PauseReminderRequested?.Invoke(this, 
-                    new PauseReminderEventArgs { Duration = TimeSpan.FromMinutes(30), Reason = "User request - 30 min" });
+                pause30min.Click += (_, _) => PauseReminderRequested?.Invoke(this, new PauseReminderEventArgs { Duration = TimeSpan.FromMinutes(30), Reason = "User requested" });
 
-                var pause1hour = new Microsoft.UI.Xaml.Controls.MenuFlyoutItem { Text = "1 hour" };
-                pause1hour.Click += (_, _) => PauseReminderRequested?.Invoke(this, 
-                    new PauseReminderEventArgs { Duration = TimeSpan.FromHours(1), Reason = "User request - 1 hour" });
+                var pause1hr = new Microsoft.UI.Xaml.Controls.MenuFlyoutItem { Text = "1 hour" };
+                pause1hr.Click += (_, _) => PauseReminderRequested?.Invoke(this, new PauseReminderEventArgs { Duration = TimeSpan.FromHours(1), Reason = "User requested" });
 
-                pauseMenu.Items.Add(pause15min);
+                var pause2hrs = new Microsoft.UI.Xaml.Controls.MenuFlyoutItem { Text = "2 hours" };
+                pause2hrs.Click += (_, _) => PauseReminderRequested?.Invoke(this, new PauseReminderEventArgs { Duration = TimeSpan.FromHours(2), Reason = "User requested" });
+
                 pauseMenu.Items.Add(pause30min);
-                pauseMenu.Items.Add(pause1hour);
+                pauseMenu.Items.Add(pause1hr);
+                pauseMenu.Items.Add(pause2hrs);
 
                 // Separator
                 var separator1 = new Microsoft.UI.Xaml.Controls.MenuFlyoutSeparator();
@@ -279,8 +344,8 @@ namespace YAWDA.Services
                 contextMenu.Items.Add(separator2);
                 contextMenu.Items.Add(exitApp);
 
-                // Note: Context menu assignment will be implemented in a future update
-                // For now, we'll handle right-click through event handlers
+                // Assign the context menu to the tray icon
+                _trayIcon.ContextFlyout = contextMenu;
                 
                 _logger.LogDebug("Context menu created with {ItemCount} items", contextMenu.Items.Count);
             }

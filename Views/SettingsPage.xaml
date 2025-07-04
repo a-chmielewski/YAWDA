@@ -391,6 +391,18 @@
                             Text="Start in system tray without showing main window"
                             Style="{StaticResource CaptionTextStyle}" />
                     </StackPanel>
+
+                    <!-- Close to Tray -->
+                    <StackPanel Spacing="8">
+                        <ToggleSwitch
+                            Header="Close to Tray"
+                            IsOn="{x:Bind ViewModel.Settings.CloseToTray, Mode=TwoWay}"
+                            OnContent="Minimize to tray"
+                            OffContent="Exit application" />
+                        <TextBlock
+                            Text="Choose whether clicking X button closes the app or minimizes to tray"
+                            Style="{StaticResource CaptionTextStyle}" />
+                    </StackPanel>
                 </StackPanel>
             </Border>
 

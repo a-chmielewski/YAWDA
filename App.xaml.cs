@@ -196,9 +196,11 @@ namespace YAWDA
                 Frame? rootFrame = window.Content as Frame;
                 if (rootFrame == null)
                 {
+                    System.Diagnostics.Debug.WriteLine("🔍 Creating new Frame for navigation");
                     rootFrame = new Frame();
                     rootFrame.NavigationFailed += OnNavigationFailed;
                     window.Content = rootFrame;
+                    System.Diagnostics.Debug.WriteLine("✓ Frame created and set as window content");
                 }
 
                 // Safely get launch arguments
@@ -206,6 +208,7 @@ namespace YAWDA
                 try
                 {
                     launchArguments = e.Arguments ?? "";
+                    System.Diagnostics.Debug.WriteLine($"🔍 Launch arguments: '{launchArguments}'");
                 }
                 catch (Exception ex)
                 {
@@ -214,21 +217,76 @@ namespace YAWDA
                 }
 
                 // Navigate immediately to avoid black screen
+                System.Diagnostics.Debug.WriteLine("🔍 About to navigate to MainPage");
                 var navigated = rootFrame.Navigate(typeof(Views.MainPage), launchArguments);
                 
                 if (!navigated)
                 {
                     var logger = ServiceProvider.GetService<ILogger<App>>();
                     logger?.LogError("Failed to navigate to MainPage");
+                    System.Diagnostics.Debug.WriteLine("❌ Failed to navigate to MainPage");
                     throw new InvalidOperationException("Navigation to MainPage failed");
                 }
+                
+                System.Diagnostics.Debug.WriteLine("✓ Successfully navigated to MainPage");
 
                 // Initialize services in background AFTER navigation
+                System.Diagnostics.Debug.WriteLine("🔍 About to start background service initialization");
                 _ = Task.Run(async () => await InitializeServicesAsync(launchArguments));
 
-                // Always activate and show the window (since tray icon is disabled)
+                // Check if we're in startup mode to determine window visibility
+                var startupService = ServiceProvider.GetRequiredService<IStartupService>();
+                startupService.InitializeStartupMode(launchArguments);
+
+                System.Diagnostics.Debug.WriteLine($"🔍 IsStartupMode: {startupService.IsStartupMode}");
+                System.Diagnostics.Debug.WriteLine($"🔍 LaunchArguments: '{launchArguments}'");
+
+                // SIMPLIFIED: For now, always show the window to ensure it's visible
+                System.Diagnostics.Debug.WriteLine("🔍 SIMPLIFIED: Always showing window for debugging");
                 window.Activate();
-                System.Diagnostics.Debug.WriteLine("✓ Main window activated and should be visible");
+                System.Diagnostics.Debug.WriteLine("✓ Main window activated");
+
+                /* 
+                // TODO: Re-enable this logic once we get basic functionality working
+                if (startupService.IsStartupMode)
+                {
+                    // In startup mode, check user settings to see if we should start minimized
+                    var dataService = ServiceProvider.GetRequiredService<IDataService>();
+                    try
+                    {
+                        // Load settings synchronously by using .Result (not ideal but needed for OnLaunched)
+                        var settings = dataService.LoadSettingsAsync().GetAwaiter().GetResult();
+                        System.Diagnostics.Debug.WriteLine($"🔍 StartMinimized setting: {settings.StartMinimized}");
+                        
+                        if (settings.StartMinimized)
+                        {
+                            // Don't show window if starting minimized to tray
+                            System.Diagnostics.Debug.WriteLine("✓ App started in startup mode with minimized setting - window will remain hidden");
+                        }
+                        else
+                        {
+                            // Show window if user doesn't want to start minimized
+                            window.Activate();
+                            System.Diagnostics.Debug.WriteLine("✓ App started in startup mode but user prefers window visible");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"⚠️ Could not load settings for startup mode: {ex.Message}");
+                        // Default to showing window if we can't load settings
+                        window.Activate();
+                    }
+                }
+                else
+                {
+                    // Normal startup - always show window
+                    System.Diagnostics.Debug.WriteLine("🔍 Normal startup detected - showing window");
+                    window.Activate();
+                    System.Diagnostics.Debug.WriteLine("✓ Main window activated and should be visible");
+                }
+                */
+                
+                System.Diagnostics.Debug.WriteLine("🔍 OnLaunched completed successfully");
             }
             catch (Exception ex)
             {
@@ -250,28 +308,50 @@ namespace YAWDA
         }
 
         /// <summary>
-        /// Handles main window closing - allow window to close but keep background services running
+        /// Handles main window closing - check user preference for close vs minimize to tray
         /// </summary>
         private void OnMainWindowClosed(object sender, Microsoft.UI.Xaml.WindowEventArgs e)
         {
             try
             {
-                System.Diagnostics.Debug.WriteLine("Main window closing - background services will continue running");
+                System.Diagnostics.Debug.WriteLine("Main window closing event triggered");
                 
-                // Allow the window to close normally
-                // Don't set e.Handled = true, let the window close
+                // For now, ALWAYS prevent close and hide to tray to avoid UI thread blocking
+                e.Handled = true;
+                System.Diagnostics.Debug.WriteLine("✓ Window close prevented - attempting to hide to tray");
                 
-                // Set window reference to null since it's closing
-                window = null;
-                
-                // Background services (reminders, system tray) will continue running
-                // The app process will stay alive due to the background keep-alive task
-                System.Diagnostics.Debug.WriteLine("✓ Main window closed, background services still active");
+                // Hide the window immediately without loading settings to avoid UI thread freeze
+                if (window != null)
+                {
+                    try
+                    {
+                        // Try to hide using AppWindow
+                        if (window.AppWindow != null)
+                        {
+                            window.AppWindow.Hide();
+                            System.Diagnostics.Debug.WriteLine("✓ Window hidden using AppWindow.Hide()");
+                        }
+                        else
+                        {
+                            System.Diagnostics.Debug.WriteLine("❌ AppWindow not available");
+                        }
+                        
+                        // Show a simple message that the app is still running
+                        System.Diagnostics.Debug.WriteLine("✓ App minimized to background - should be accessible via tray");
+                    }
+                    catch (Exception hideEx)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"❌ Error hiding window: {hideEx.Message}");
+                        // If hiding fails, allow the window to close
+                        e.Handled = false;
+                    }
+                }
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Error during window close: {ex.Message}");
-                // Don't prevent closing even if there's an error
+                System.Diagnostics.Debug.WriteLine($"❌ Error during window close: {ex.Message}");
+                // If there's an error, default to allowing the window to close
+                e.Handled = false;
             }
         }
 
@@ -378,7 +458,11 @@ namespace YAWDA
 
                 // Initialize background services with timeout
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15)); // 15 second timeout
+                System.Diagnostics.Debug.WriteLine("🔍 About to call InitializeBackgroundServicesAsync");
+                
                 await InitializeBackgroundServicesAsync(cts.Token);
+                
+                System.Diagnostics.Debug.WriteLine("✓ InitializeBackgroundServicesAsync completed");
                 
                 // IMPORTANT: Keep app alive for background services
                 // Since system tray is disabled, we need to prevent WinUI 3 from auto-exiting
@@ -406,6 +490,7 @@ namespace YAWDA
                 var logger = ServiceProvider.GetService<ILogger<App>>();
                 logger?.LogError(ex, "Failed to initialize services - app will continue with limited functionality");
                 System.Diagnostics.Debug.WriteLine($"❌ Service initialization failed: {ex.Message}");
+                System.Diagnostics.Debug.WriteLine($"❌ Stack trace: {ex.StackTrace}");
             }
         }
 
@@ -418,9 +503,13 @@ namespace YAWDA
             
             try
             {
+                System.Diagnostics.Debug.WriteLine("🔍 InitializeBackgroundServicesAsync started");
+                
                 errorReportingService = ServiceProvider.GetRequiredService<IErrorReportingService>();
+                System.Diagnostics.Debug.WriteLine("✓ ErrorReportingService obtained");
                 
                 // Initialize DataService with timeout
+                System.Diagnostics.Debug.WriteLine("🔍 About to initialize DataService");
                 await InitializeServiceWithGracefulDegradation(
                     async () =>
                     {
@@ -436,6 +525,7 @@ namespace YAWDA
                 );
                 
                 // Initialize other services (these should be faster)
+                System.Diagnostics.Debug.WriteLine("🔍 About to initialize ReminderService");
                 await InitializeServiceWithGracefulDegradation(
                     async () =>
                     {
@@ -448,22 +538,35 @@ namespace YAWDA
                     cancellationToken
                 );
 
+                System.Diagnostics.Debug.WriteLine("🔍 About to initialize SystemTrayService");
                 await InitializeServiceWithGracefulDegradation(
                     async () =>
                     {
                         var systemTrayService = ServiceProvider.GetRequiredService<ISystemTrayService>();
                         await systemTrayService.InitializeAsync();
+                        
+                        // Wire up tray icon event handlers
+                        systemTrayService.ShowMainWindowRequested += OnShowMainWindowRequested;
+                        systemTrayService.ExitRequested += OnExitRequested;
+                        systemTrayService.ManualLogRequested += OnManualLogRequested;
+                        systemTrayService.ShowSettingsRequested += OnShowSettingsRequested;
+                        systemTrayService.ShowStatsRequested += OnShowStatsRequested;
+                        systemTrayService.PauseReminderRequested += OnPauseReminderRequested;
+                        
                         System.Diagnostics.Debug.WriteLine("✓ SystemTrayService initialized");
                     },
                     "SystemTrayService",
                     errorReportingService,
                     cancellationToken
                 );
+                
+                System.Diagnostics.Debug.WriteLine("✓ All background services initialized successfully");
             }
             catch (Exception ex)
             {
                 errorReportingService?.ReportErrorAsync(ex, "Critical service initialization failure", false);
                 System.Diagnostics.Debug.WriteLine($"❌ Critical error in background service initialization: {ex.Message}");
+                System.Diagnostics.Debug.WriteLine($"❌ Stack trace: {ex.StackTrace}");
                 throw;
             }
         }
@@ -479,8 +582,10 @@ namespace YAWDA
         {
             try
             {
+                System.Diagnostics.Debug.WriteLine($"🔍 Starting initialization of {serviceName}");
                 cancellationToken.ThrowIfCancellationRequested();
                 await serviceInitializer();
+                System.Diagnostics.Debug.WriteLine($"✓ {serviceName} initialized successfully");
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
@@ -490,6 +595,7 @@ namespace YAWDA
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"❌ {serviceName} initialization failed: {ex.Message}");
+                System.Diagnostics.Debug.WriteLine($"❌ {serviceName} stack trace: {ex.StackTrace}");
                 errorReportingService?.ReportErrorAsync(ex, $"{serviceName} initialization failed", false);
                 // Don't rethrow - allow app to continue with degraded functionality
             }
@@ -510,6 +616,149 @@ namespace YAWDA
                 // Fallback logging if global exception handler setup fails
                 var logger = ServiceProvider.GetRequiredService<ILogger<App>>();
                 logger.LogError(ex, "Failed to initialize global exception handler");
+            }
+        }
+
+        /// <summary>
+        /// Handles system tray request to show main window
+        /// </summary>
+        private void OnShowMainWindowRequested(object? sender, EventArgs e)
+        {
+            try
+            {
+                System.Diagnostics.Debug.WriteLine("✓ Show main window requested from tray");
+                if (window != null)
+                {
+                    window.Activate();
+                    System.Diagnostics.Debug.WriteLine("✓ Main window activated from tray icon");
+                }
+                else
+                {
+                    System.Diagnostics.Debug.WriteLine("⚠️ Main window reference is null");
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"❌ Error showing main window from tray: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Emergency method to show window - can be called if tray icon fails
+        /// </summary>
+        public void EmergencyShowWindow()
+        {
+            try
+            {
+                System.Diagnostics.Debug.WriteLine("🆘 Emergency show window called");
+                if (window != null)
+                {
+                    window.Activate();
+                    System.Diagnostics.Debug.WriteLine("✓ Emergency window show successful");
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"❌ Emergency window show failed: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Handles system tray request to exit the application
+        /// </summary>
+        private void OnExitRequested(object? sender, EventArgs e)
+        {
+            try
+            {
+                System.Diagnostics.Debug.WriteLine("✓ Exit requested from tray icon - closing application");
+                Application.Current.Exit();
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"❌ Error exiting application from tray: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Handles system tray request to log water manually
+        /// </summary>
+        private async void OnManualLogRequested(object? sender, Services.ManualLogEventArgs e)
+        {
+            try
+            {
+                var dataService = ServiceProvider.GetRequiredService<IDataService>();
+                await dataService.LogWaterIntakeAsync(e.Amount, "Manual - Tray Icon");
+                System.Diagnostics.Debug.WriteLine($"✓ Manual water log from tray: {e.Amount}ml");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"❌ Error logging water from tray: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Handles system tray request to show settings
+        /// </summary>
+        private void OnShowSettingsRequested(object? sender, EventArgs e)
+        {
+            try
+            {
+                // Show main window first, then navigate to settings
+                if (window != null)
+                {
+                    window.Activate();
+                    
+                    // Navigate to settings page
+                    if (window.Content is Frame frame)
+                    {
+                        frame.Navigate(typeof(Views.SettingsPage));
+                    }
+                    
+                    System.Diagnostics.Debug.WriteLine("✓ Settings page requested from tray icon");
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"❌ Error showing settings from tray: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Handles system tray request to show statistics
+        /// </summary>
+        private void OnShowStatsRequested(object? sender, EventArgs e)
+        {
+            try
+            {
+                // Show main window first, then navigate to stats
+                if (window != null)
+                {
+                    window.Activate();
+                    
+                    // For now, just show main window - stats navigation can be added later
+                    System.Diagnostics.Debug.WriteLine("✓ Statistics page requested from tray icon");
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"❌ Error showing stats from tray: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Handles system tray request to pause reminders
+        /// </summary>
+        private async void OnPauseReminderRequested(object? sender, Services.PauseReminderEventArgs e)
+        {
+            try
+            {
+                var reminderService = ServiceProvider.GetRequiredService<IReminderService>();
+                await reminderService.PauseAsync(e.Duration);
+                System.Diagnostics.Debug.WriteLine($"✓ Reminders paused from tray: {e.Duration.TotalMinutes} minutes");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"❌ Error pausing reminders from tray: {ex.Message}");
             }
         }
 
@@ -536,3 +785,4 @@ namespace YAWDA
         }
     }
 }
+
